@@ -6,7 +6,6 @@ import json
 import time
 import hashlib
 from datetime import datetime
-from typing import Optional
 
 
 def calcular_sha256(ruta_archivo: str) -> str:
@@ -75,7 +74,7 @@ class SyncState:
     def obtener_revid(self, nombre_archivo: str) -> int:
         return self.datos["articulos"].get(nombre_archivo, {}).get("revid", 0)
 
-    def obtener_hash(self, nombre_archivo: str) -> Optional[str]:
+    def obtener_hash(self, nombre_archivo: str) -> str | None:
         if nombre_archivo in self.datos["articulos"]:
             return self.datos["articulos"][nombre_archivo].get("hash")
         if nombre_archivo in self.datos["imagenes"]:

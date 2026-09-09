@@ -12,7 +12,6 @@ import mimetypes
 import urllib.parse
 import urllib.request
 import http.cookiejar
-from typing import Optional
 from mw_sync.config import EXTENSIONES_MULTIMEDIA, DEFAULT_CONFIG
 
 try:
@@ -359,7 +358,7 @@ class MediaWikiClient:
 
         return imagenes
 
-    def descargar_contenido_pagina(self, titulo: str) -> Optional[dict]:
+    def descargar_contenido_pagina(self, titulo: str) -> dict | None:
         """Descarga el HTML renderizado y metadatos de un artículo."""
         try:
             data = self._api_get({

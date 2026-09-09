@@ -1,0 +1,28 @@
+# Entorno y credenciales
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+
+# Caches y temporales de sincronización
+.mw_cache/
+*.conflict.md
+.pytest_cache/
+
+# Documentación descargada de MediaWiki (excluida de Git)
+wiki_docs/
+
+# Archivos de contexto y notas locales de asistentes de IA
+gemini.md
+.gemini/
+
+

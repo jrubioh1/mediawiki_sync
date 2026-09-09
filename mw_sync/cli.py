@@ -90,25 +90,45 @@ Ejemplos de uso:
 
     args = parser.parse_args(argv)
 
-    # Si se especificó args.dir, intentar autodetectar y cargar el .env de la carpeta objetivo o de su padre
-    if args.dir:
-        actualizar_config_desde_directorio(args.dir)
-        # Actualizar argumentos si no se proporcionaron explícitamente por CLI
-        raw_args = argv if argv is not None else sys.argv[1:]
-        if not any(a.startswith("--url") for a in raw_args):
-            args.url = DEFAULT_CONFIG["MEDIAWIKI_URL"]
-        if not any(a.startswith("--http-user") for a in raw_args):
-            args.http_user = DEFAULT_CONFIG["HTTP_USER"]
-        if not any(a.startswith("--http-password") for a in raw_args):
-            args.http_password = DEFAULT_CONFIG["HTTP_PASS"]
-        if not any(a.startswith("--wiki-user") for a in raw_args):
-            args.wiki_user = DEFAULT_CONFIG["WIKI_USER"]
-        if not any(a.startswith("--wiki-password") for a in raw_args):
-            args.wiki_password = DEFAULT_CONFIG["WIKI_PASS"]
-        if not any(a.startswith("--user") or a.startswith("-u") for a in raw_args):
-            args.user = DEFAULT_CONFIG["AUTH_USER"]
-        if not any(a.startswith("--password") or a.startswith("-p") for a in raw_args):
-            args.password = DEFAULT_CONFIG["AUTH_PASS"]
+    # Resolver directorio de documentación y autodescubrir .env
+    raw_args = argv if argv is not None else sys.argv[1:]
+    dir_explicit = any(
+        a.startswith("--dir") or a == "-o" or a.startswith("-o=") or a.startswith("--dir=")
+        for a in raw_args
+    )
+
+    if dir_explicit and args.dir:
+        dir_resuelto = actualizar_config_desde_directorio(args.dir)
+        if dir_resuelto:
+            args.dir = dir_resuelto
+    else:
+        dir_resuelto = actualizar_config_desde_directorio(None)
+        if dir_resuelto:
+            args.dir = dir_resuelto
+
+    # Actualizar argumentos si no se proporcionaron explícitamente por CLI
+    if not any(a.startswith("--url") for a in raw_args):
+        args.url = DEFAULT_CONFIG["MEDIAWIKI_URL"]
+    if not any(a.startswith("--http-user") for a in raw_args):
+        args.http_user = DEFAULT_CONFIG["HTTP_USER"]
+    if not any(a.startswith("--http-password") for a in raw_args):
+        args.http_password = DEFAULT_CONFIG["HTTP_PASS"]
+    if not any(a.startswith("--wiki-user") for a in raw_args):
+        args.wiki_user = DEFAULT_CONFIG["WIKI_USER"]
+    if not any(a.startswith("--wiki-password") for a in raw_args):
+        args.wiki_password = DEFAULT_CONFIG["WIKI_PASS"]
+    if not any(a.startswith("--user") or a.startswith("-u") for a in raw_args):
+        args.user = DEFAULT_CONFIG["AUTH_USER"]
+    if not any(a.startswith("--password") or a.startswith("-p") for a in raw_args):
+        args.password = DEFAULT_CONFIG["AUTH_PASS"]
+    if not any(a.startswith("--verify-ssl") for a in raw_args):
+        args.verify_ssl = DEFAULT_CONFIG["VERIFY_SSL"]
+    if not any(a.startswith("--ca-bundle") for a in raw_args):
+        args.ca_bundle = DEFAULT_CONFIG["CA_BUNDLE"]
+    if not any(a.startswith("--threads") or a == "-t" or a.startswith("-t=") or a.startswith("--threads=") for a in raw_args):
+        args.threads = DEFAULT_CONFIG["THREADS"]
+    if not any(a.startswith("--summary") for a in raw_args):
+        args.summary = DEFAULT_CONFIG["EDIT_SUMMARY"]
 
 
     # Si se solicita modo saneamiento

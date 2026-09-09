@@ -171,7 +171,7 @@ El motor de configuración resuelve los valores aplicando la siguiente jerarquí
 - **Entornos de Producción / Contenedores / CI/CD:** No es necesario crear un archivo `.env`. Defina directamente las variables de entorno de sistema (`MW_URL`, `MW_WIKI_USER`, etc.) en su orquestador de contenedores (Docker / Kubernetes Secrets), servicios systemd o secretos de CI/CD (GitHub Actions / GitLab CI).
 - **Ubicación del Directorio de Salida (`MW_OUTPUT_DIR` / `--dir`):**
   - **No es necesario ejecutar `mw-sync` dentro del directorio de documentación.** El programa detecta automáticamente la ruta desde la variable de entorno `MW_OUTPUT_DIR` o el flag CLI `--dir` (`-o`).
-  - **Rutas Absolutas vs Relativas:** Si especifica una ruta relativa (ej. `MW_OUTPUT_DIR=./wiki_docs`), se resolverá respecto al directorio donde ejecute el comando. Si especifica una ruta absoluta (ej. `MW_OUTPUT_DIR=/home/usuario/wiki_docs`), funcionará exactamente igual sin importar el directorio de trabajo actual desde el que ejecute la terminal.
+  - **Rutas Absolutas vs Relativas:** Si especifica una ruta relativa (ej. `MW_OUTPUT_DIR=./wiki_docs`), se resolverá respecto al directorio donde se ubica el archivo `.env` del proyecto (o al directorio actual de ejecución si no hay `.env`). Si especifica una ruta absoluta (ej. `MW_OUTPUT_DIR=/home/usuario/wiki_docs`), funcionará exactamente igual sin importar el directorio de trabajo actual desde el que ejecute la terminal.
   - El archivo de estado `.sync_state.json` se guardará automáticamente dentro del directorio configurado (`<OUTPUT_DIR>/.sync_state.json`).
 
 ---
@@ -189,7 +189,7 @@ mis_wikis/
 │   ├── .env               # Configuración y credenciales de la wiki pública
 │   └── wiki_docs/
 └── wiki_proyectos/
-    ├── .env               # Configuración y credenciales de la wiki de proyectos
+    ├── .env               # Configuración y credenciales (MW_OUTPUT_DIR=./wiki_docs opcional)
     └── wiki_docs/
 ```
 
@@ -205,12 +205,33 @@ mw-sync --upload
 mw-sync --upload --dir /home/usuario/mis_wikis/wiki_publica
 ```
 
+> [!TIP]
+> **Resolución de directorios en este ejemplo:**
+> * En los archivos `.env` de este esquema **no se ha declarado la variable `MW_OUTPUT_DIR`**. Al omitirla, `mw-sync` aplica automáticamente la convención estándar y dirige las operaciones a la subcarpeta `./wiki_docs/` de ese proyecto.
+> * Si en el `.env` declaras una ruta relativa (ej. `MW_OUTPUT_DIR=./mis_documentos` o `MW_OUTPUT_DIR=.`), `mw-sync` usará esa ruta resolviéndola siempre relativa a la ubicación del archivo `.env` del proyecto.
+
+#### Guía de Casuísticas: Bajada (`--download`) y Subida (`--upload`)
+
+> [!NOTE]
+> El parámetro `--download` (o `-dl`) **no es obligatorio**: la descarga incremental es la operación por defecto de `mw-sync` si no se especifica `--upload`. Por tanto, `mw-sync --dir /ruta` equivale a `mw-sync --download --dir /ruta`.
+
+| Casuística | Ejemplo Bajada (Download) | Ejemplo Subida (Upload) | Destino de los `.md` / Notas |
+| :--- | :--- | :--- | :--- |
+| **1. Dentro del proyecto** (`cd`) | `cd wiki_clientes && mw-sync` | `cd wiki_clientes && mw-sync --upload` | `./wiki_docs/` local |
+| **2. Con `--dir` a raíz de proyecto** | `mw-sync --dir /ruta/wiki_clientes` | `mw-sync --upload --dir /ruta/wiki_clientes` | `/ruta/wiki_clientes/wiki_docs/` (crea o usa subcarpeta) |
+| **3. Con `--dir` a `wiki_docs` directo** | `mw-sync --dir /ruta/wiki_clientes/wiki_docs` | `mw-sync --upload --dir /ruta/wiki_clientes/wiki_docs` | `/ruta/wiki_clientes/wiki_docs/` (sin anidar `wiki_docs/wiki_docs`) |
+| **4. Carpeta personalizada en `.env`** | `mw-sync --dir /ruta/wiki_clientes` | `mw-sync --upload --dir /ruta/wiki_clientes` | `/ruta/wiki_clientes/<MW_OUTPUT_DIR>/` (relativo a `.env`) |
+| **5. Carpeta directa sin `.env` (CI/CD)** | `mw-sync --dir /var/docs/manuales` | `mw-sync --upload --dir /var/docs/manuales` | `/var/docs/manuales/` directo (sin subcarpeta `wiki_docs`) |
+| **6. Variable en el OS (`export MW_OUTPUT_DIR`)** | `mw-sync` (sin `--dir`) | `mw-sync --upload` (sin `--dir`) | Destino fijado por `os.environ["MW_OUTPUT_DIR"]` (absoluta o relativa a `$PWD`) |
+| **7. Estructura plana en proyecto (`MW_OUTPUT_DIR=.`)** | `mw-sync --dir /ruta/wiki_plana` | `mw-sync --upload --dir /ruta/wiki_plana` | `/ruta/wiki_plana/` directamente (raíz del proyecto, sin subcarpeta) |
+
 Al ejecutarse, `mw_sync` cargará automáticamente las credenciales y la URL del `.env` del directorio actual o de la carpeta especificada en `--dir`, manteniendo los archivos Markdown y el registro de estado `.sync_state.json` de cada servidor totalmente aislados.
 
 > [!IMPORTANT]
 > **Reglas clave para el patrón Multi-Wiki:**
-> 1. **Auto-descubrimiento con `--dir`:** Si ejecuta desde otra ubicación sin hacer `cd`, pase `--dir /ruta/al/proyecto`. La herramienta buscará y cargará automáticamente el archivo `.env` perteneciente a ese directorio.
-> 2. **Evite definir variables `MW_*` globales en la consola (`export MW_...` o `~/.bashrc`):** Dado que las variables de entorno del sistema operativo tienen mayor precedencia que el archivo `.env`, cualquier variable global de sistema sobrescribirá el contenido de los archivos `.env` locales. Deje el entorno del sistema limpio de variables específicas (`MW_URL`, `MW_WIKI_USER`, `MW_WIKI_PASS`, `MW_OUTPUT_DIR`) para que cada proyecto responda a su propio `.env`.
+> 1. **Auto-descubrimiento con `--dir` y resolución de `wiki_docs`:** Si ejecuta desde otra ubicación sin hacer `cd`, pase `--dir /ruta/al/proyecto`. La herramienta buscará y cargará automáticamente el archivo `.env` perteneciente a ese directorio y redirigirá la sincronización a la subcarpeta `wiki_docs/` (o al directorio definido en `MW_OUTPUT_DIR` relativo al proyecto). También puede pasar directamente `--dir /ruta/al/proyecto/wiki_docs`.
+> 2. **Ubicación de `MW_OUTPUT_DIR` en el `.env` vs en el OS:** Si no se especifica `MW_OUTPUT_DIR` en el `.env`, `mw-sync` asume por defecto la subcarpeta `./wiki_docs` dentro del proyecto. Las rutas relativas de `MW_OUTPUT_DIR` en el `.env` se resuelven siempre respecto a la raíz del proyecto donde se ubica el archivo `.env`. En cambio, si `MW_OUTPUT_DIR` se define en el sistema operativo (`export`), se resolverá respecto al directorio de ejecución actual de la terminal.
+> 3. **Evite definir variables `MW_*` globales en la consola (`export MW_...` o `~/.bashrc`):** Dado que las variables de entorno del sistema operativo tienen mayor precedencia que el archivo `.env`, cualquier variable global de sistema sobrescribirá el contenido de los archivos `.env` locales. Deje el entorno del sistema limpio de variables específicas (`MW_URL`, `MW_WIKI_USER`, `MW_WIKI_PASS`, `MW_OUTPUT_DIR`) para que cada proyecto responda a su propio `.env`.
 
 ---
 
@@ -229,7 +250,7 @@ Al ejecutarse, `mw_sync` cargará automáticamente las credenciales y la URL del
 | `MW_CA_BUNDLE` | Ruta a archivo CA Bundle (`.crt`/`.pem`) para certificados corporativos o autofirmados | `None` | `--ca-bundle` |
 | `MW_TIMEOUT` | Tiempo máximo de espera en segundos para cada petición HTTP/HTTPS | `10.0` | Utilizado en cliente HTTP |
 | `MW_USER_AGENT` | Cabecera `User-Agent` personalizada enviada en las peticiones a MediaWiki | `MediaWikiSync/3.0 (Python; BiDirectional)` | Utilizado en cliente HTTP |
-| `MW_OUTPUT_DIR` | Directorio local donde se guardan los archivos Markdown e imágenes | `./wiki_docs` | `--dir`, `-o` |
+| `MW_OUTPUT_DIR` | Directorio local donde se guardan los archivos Markdown e imágenes (relativo a `.env` si es relativo) | `./wiki_docs` | `--dir`, `-o` |
 | `MW_THREADS` | Número de hilos concurrentes para la descarga paralela de artículos e imágenes | `8` | `--threads`, `-t` |
 | `MW_EDIT_SUMMARY` | Resumen predeterminado en el historial de revisiones al publicar cambios en MediaWiki | `Actualizado desde local Markdown vía mediawiki_sync` | `--summary` |
 | `MW_TEST_LIVE` | *(Testing)* Habilita la suite de pruebas E2E contra un servidor MediaWiki en vivo (`1`/`0`) | `0` | Entorno de Pruebas |

@@ -38,34 +38,92 @@ def cargar_env(ruta_env: str = ".env", sobrescribir: bool = False) -> dict:
     return env_vars
 
 
-def actualizar_config_desde_directorio(dir_path: str):
+def actualizar_config_desde_directorio(dir_path: str = None) -> str:
     """
-    Si dir_path o su directorio padre contiene un archivo .env, lo carga y actualiza DEFAULT_CONFIG.
+    Si dir_path o su directorio padre (o cwd) contiene un archivo .env, lo carga y actualiza DEFAULT_CONFIG.
+
+    Resuelve adecuadamente el directorio de documentación (docs_dir):
+    - Si se especifica la raíz de un proyecto (donde reside .env), redirige automáticamente
+      a la subcarpeta 'wiki_docs' (o al valor relativo indicado en MW_OUTPUT_DIR).
+    - Si se especifica directamente la subcarpeta 'wiki_docs' o un directorio con ficheros .md, lo respeta.
+    - Resuelve rutas relativas de MW_OUTPUT_DIR respecto a la ubicación del archivo .env.
+
+    Devuelve la ruta absoluta normalizada al directorio de documentación.
     """
-    if not dir_path:
-        return
-    p = Path(dir_path).resolve()
+    if dir_path:
+        p = Path(dir_path).resolve()
+    else:
+        p = Path.cwd().resolve()
+
+    env_file = None
+    project_dir = None
+
     candidatos = [
         p / ".env",
-        p.parent / ".env"
+        p.parent / ".env",
+        Path.cwd().resolve() / ".env",
+        Path.cwd().resolve().parent / ".env"
     ]
-    for env_file in candidatos:
-        if env_file.is_file():
-            cargar_env(str(env_file), sobrescribir=True)
-            DEFAULT_CONFIG["MEDIAWIKI_URL"] = os.getenv("MW_URL", "https://wiki.example.com/api.php")
-            DEFAULT_CONFIG["HTTP_USER"] = os.getenv("MW_HTTP_USER", os.getenv("MW_USER", ""))
-            DEFAULT_CONFIG["HTTP_PASS"] = os.getenv("MW_HTTP_PASS", os.getenv("MW_PASS", ""))
-            DEFAULT_CONFIG["WIKI_USER"] = os.getenv("MW_WIKI_USER", "")
-            DEFAULT_CONFIG["WIKI_PASS"] = os.getenv("MW_WIKI_PASS", "")
-            DEFAULT_CONFIG["AUTH_USER"] = os.getenv("MW_USER", "")
-            DEFAULT_CONFIG["AUTH_PASS"] = os.getenv("MW_PASS", "")
-            DEFAULT_CONFIG["VERIFY_SSL"] = os.getenv("MW_VERIFY_SSL", "false").lower() in ("true", "1", "yes")
-            DEFAULT_CONFIG["CA_BUNDLE"] = os.getenv("MW_CA_BUNDLE", None)
-            DEFAULT_CONFIG["OUTPUT_DIR"] = os.getenv("MW_OUTPUT_DIR", dir_path)
-            DEFAULT_CONFIG["THREADS"] = int(os.getenv("MW_THREADS", "8"))
-            DEFAULT_CONFIG["USER_AGENT"] = os.getenv("MW_USER_AGENT", "MediaWikiSync/3.0 (Python; BiDirectional)")
-            DEFAULT_CONFIG["EDIT_SUMMARY"] = os.getenv("MW_EDIT_SUMMARY", "Actualizado desde local Markdown vía mediawiki_sync")
+    for candidato in candidatos:
+        if candidato.is_file():
+            env_file = candidato
+            project_dir = candidato.parent
             break
+
+    env_vars = {}
+    if env_file:
+        env_vars = cargar_env(str(env_file), sobrescribir=True)
+        DEFAULT_CONFIG["MEDIAWIKI_URL"] = os.getenv("MW_URL", "https://wiki.example.com/api.php")
+        DEFAULT_CONFIG["HTTP_USER"] = os.getenv("MW_HTTP_USER", os.getenv("MW_USER", ""))
+        DEFAULT_CONFIG["HTTP_PASS"] = os.getenv("MW_HTTP_PASS", os.getenv("MW_PASS", ""))
+        DEFAULT_CONFIG["WIKI_USER"] = os.getenv("MW_WIKI_USER", "")
+        DEFAULT_CONFIG["WIKI_PASS"] = os.getenv("MW_WIKI_PASS", "")
+        DEFAULT_CONFIG["AUTH_USER"] = os.getenv("MW_USER", "")
+        DEFAULT_CONFIG["AUTH_PASS"] = os.getenv("MW_PASS", "")
+        DEFAULT_CONFIG["VERIFY_SSL"] = os.getenv("MW_VERIFY_SSL", "false").lower() in ("true", "1", "yes")
+        DEFAULT_CONFIG["CA_BUNDLE"] = os.getenv("MW_CA_BUNDLE", None)
+        DEFAULT_CONFIG["THREADS"] = int(os.getenv("MW_THREADS", "8"))
+        DEFAULT_CONFIG["USER_AGENT"] = os.getenv("MW_USER_AGENT", "MediaWikiSync/3.0 (Python; BiDirectional)")
+        DEFAULT_CONFIG["EDIT_SUMMARY"] = os.getenv("MW_EDIT_SUMMARY", "Actualizado desde local Markdown vía mediawiki_sync")
+
+    # Determinar el directorio de documentación efectivo
+    if env_file:
+        env_output_dir = env_vars.get("MW_OUTPUT_DIR")
+    else:
+        env_output_dir = os.getenv("MW_OUTPUT_DIR")
+
+    if project_dir and p == project_dir:
+        # El usuario especificó la raíz del proyecto (donde reside el .env)
+        if env_output_dir:
+            out_p = Path(env_output_dir.strip())
+            docs_dir = out_p if out_p.is_absolute() else (project_dir / out_p).resolve()
+        elif (project_dir / "wiki_docs").is_dir():
+            docs_dir = project_dir / "wiki_docs"
+        elif any(f for f in project_dir.glob("*.md") if not f.name.startswith("00_INDICE")):
+            docs_dir = project_dir
+        else:
+            # Caso de descarga inicial o convención estándar
+            docs_dir = project_dir / "wiki_docs"
+    elif project_dir and p == project_dir / "wiki_docs":
+        # Se apuntó directamente a wiki_docs
+        docs_dir = p
+    elif env_output_dir and not dir_path:
+        # No se pasó flag explícito por CLI pero hay MW_OUTPUT_DIR en el entorno
+        out_p = Path(env_output_dir.strip())
+        if out_p.is_absolute():
+            docs_dir = out_p
+        elif project_dir:
+            docs_dir = (project_dir / out_p).resolve()
+        else:
+            docs_dir = (Path.cwd() / out_p).resolve()
+    elif (p / "wiki_docs").is_dir() and not any(f for f in p.glob("*.md") if not f.name.startswith("00_INDICE")):
+        docs_dir = p / "wiki_docs"
+    else:
+        docs_dir = p
+
+    DEFAULT_CONFIG["OUTPUT_DIR"] = str(docs_dir)
+    os.environ["MW_OUTPUT_DIR"] = str(docs_dir)
+    return str(docs_dir)
 
 
 # Cargar variables de entorno desde .env si existe

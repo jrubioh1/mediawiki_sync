@@ -73,8 +73,12 @@ def ejecutar_subida(cliente: MediaWikiClient, output_dir: str, archivo_especific
     if archivo_especifico:
         ruta_abs = os.path.abspath(archivo_especifico)
         if not os.path.exists(ruta_abs):
-            print(f"[ERROR] El archivo especificado no existe: {ruta_abs}")
-            return
+            ruta_en_dir = os.path.join(output_dir, archivo_especifico)
+            if os.path.exists(ruta_en_dir):
+                ruta_abs = os.path.abspath(ruta_en_dir)
+            else:
+                print(f"[ERROR] El archivo especificado no existe: {ruta_abs}")
+                return
 
         if ruta_abs.endswith(".md"):
             archivos_a_subir.append(ruta_abs)

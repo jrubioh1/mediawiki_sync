@@ -9,8 +9,8 @@ import getpass
 from pathlib import Path
 
 
-def cargar_env(ruta_env: str = ".env") -> dict:
-    """Lee un archivo .env si existe y carga sus valores en os.environ sin pisar los ya definidos."""
+def cargar_env(ruta_env: str = ".env", sobrescribir: bool = False) -> dict:
+    """Lee un archivo .env si existe y carga sus valores en os.environ."""
     env_vars = {}
     path = Path(ruta_env)
     if not path.is_file():
@@ -30,12 +30,42 @@ def cargar_env(ruta_env: str = ".env") -> dict:
                     if (valor.startswith('"') and valor.endswith('"')) or (valor.startswith("'") and valor.endswith("'")):
                         valor = valor[1:-1]
                     env_vars[clave] = valor
-                    if clave not in os.environ:
+                    if sobrescribir or clave not in os.environ:
                         os.environ[clave] = valor
     except Exception as e:
         print(f"[AVISO] Al leer {ruta_env}: {e}", file=sys.stderr)
 
     return env_vars
+
+
+def actualizar_config_desde_directorio(dir_path: str):
+    """
+    Si dir_path o su directorio padre contiene un archivo .env, lo carga y actualiza DEFAULT_CONFIG.
+    """
+    if not dir_path:
+        return
+    p = Path(dir_path).resolve()
+    candidatos = [
+        p / ".env",
+        p.parent / ".env"
+    ]
+    for env_file in candidatos:
+        if env_file.is_file():
+            cargar_env(str(env_file), sobrescribir=True)
+            DEFAULT_CONFIG["MEDIAWIKI_URL"] = os.getenv("MW_URL", "https://wiki.example.com/api.php")
+            DEFAULT_CONFIG["HTTP_USER"] = os.getenv("MW_HTTP_USER", os.getenv("MW_USER", ""))
+            DEFAULT_CONFIG["HTTP_PASS"] = os.getenv("MW_HTTP_PASS", os.getenv("MW_PASS", ""))
+            DEFAULT_CONFIG["WIKI_USER"] = os.getenv("MW_WIKI_USER", "")
+            DEFAULT_CONFIG["WIKI_PASS"] = os.getenv("MW_WIKI_PASS", "")
+            DEFAULT_CONFIG["AUTH_USER"] = os.getenv("MW_USER", "")
+            DEFAULT_CONFIG["AUTH_PASS"] = os.getenv("MW_PASS", "")
+            DEFAULT_CONFIG["VERIFY_SSL"] = os.getenv("MW_VERIFY_SSL", "false").lower() in ("true", "1", "yes")
+            DEFAULT_CONFIG["CA_BUNDLE"] = os.getenv("MW_CA_BUNDLE", None)
+            DEFAULT_CONFIG["OUTPUT_DIR"] = os.getenv("MW_OUTPUT_DIR", dir_path)
+            DEFAULT_CONFIG["THREADS"] = int(os.getenv("MW_THREADS", "8"))
+            DEFAULT_CONFIG["USER_AGENT"] = os.getenv("MW_USER_AGENT", "MediaWikiSync/3.0 (Python; BiDirectional)")
+            DEFAULT_CONFIG["EDIT_SUMMARY"] = os.getenv("MW_EDIT_SUMMARY", "Actualizado desde local Markdown vía mediawiki_sync")
+            break
 
 
 # Cargar variables de entorno desde .env si existe

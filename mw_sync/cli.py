@@ -3,7 +3,7 @@ Interfaz de Línea de Comandos (CLI) para MediaWiki Sync.
 """
 import sys
 import argparse
-from mw_sync.config import DEFAULT_CONFIG, solicitar_credenciales_si_faltan
+from mw_sync.config import DEFAULT_CONFIG, solicitar_credenciales_si_faltan, actualizar_config_desde_directorio
 from mw_sync.client import MediaWikiClient
 from mw_sync.downloader import ejecutar_descarga
 from mw_sync.uploader import ejecutar_subida
@@ -89,6 +89,27 @@ Ejemplos de uso:
                         help="Mensaje de resumen para el historial de revisiones de MediaWiki.")
 
     args = parser.parse_args(argv)
+
+    # Si se especificó args.dir, intentar autodetectar y cargar el .env de la carpeta objetivo o de su padre
+    if args.dir:
+        actualizar_config_desde_directorio(args.dir)
+        # Actualizar argumentos si no se proporcionaron explícitamente por CLI
+        raw_args = argv if argv is not None else sys.argv[1:]
+        if not any(a.startswith("--url") for a in raw_args):
+            args.url = DEFAULT_CONFIG["MEDIAWIKI_URL"]
+        if not any(a.startswith("--http-user") for a in raw_args):
+            args.http_user = DEFAULT_CONFIG["HTTP_USER"]
+        if not any(a.startswith("--http-password") for a in raw_args):
+            args.http_password = DEFAULT_CONFIG["HTTP_PASS"]
+        if not any(a.startswith("--wiki-user") for a in raw_args):
+            args.wiki_user = DEFAULT_CONFIG["WIKI_USER"]
+        if not any(a.startswith("--wiki-password") for a in raw_args):
+            args.wiki_password = DEFAULT_CONFIG["WIKI_PASS"]
+        if not any(a.startswith("--user") or a.startswith("-u") for a in raw_args):
+            args.user = DEFAULT_CONFIG["AUTH_USER"]
+        if not any(a.startswith("--password") or a.startswith("-p") for a in raw_args):
+            args.password = DEFAULT_CONFIG["AUTH_PASS"]
+
 
     # Si se solicita modo saneamiento
     if args.sanitize:

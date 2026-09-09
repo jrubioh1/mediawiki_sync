@@ -150,32 +150,117 @@ python3 -m mw_sync --help
 
 ---
 
-## Configuracion de Entorno (.env)
+## Configuracion de Entorno (.env y Variables de Sistema)
 
-Edite el archivo `.env` con los datos de su entorno. Este archivo nunca debe versionarse en Git.
+`mw_sync` permite configurar la conexión, credenciales y opciones de ejecución tanto en desarrollo local como en entornos de producción (Docker, Kubernetes, GitHub Actions, systemd, etc.).
+
+### Orden de Precedencia (Jerarquía de Configuración)
+
+El motor de configuración resuelve los valores aplicando la siguiente jerarquía (de mayor a menor prioridad):
+
+1. **Parámetros CLI:** Argumentos pasados directamente en la terminal (ej. `--url`, `--threads 16`, `--wiki-user`).
+2. **Variables de Entorno del Sistema / Producción:** Variables exported en el sistema operativo, contenedor Docker o pipeline de CI/CD (ej. `export MW_URL=...`).
+3. **Archivo `.env` Local:** Cargas desde el archivo `.env` situado en el directorio de trabajo (sin sobrescribir variables ya existentes en el sistema).
+4. **Valores por Defecto:** Valores predeterminados integrados en la aplicación.
+
+---
+
+### Uso Local vs Producción
+
+- **Desarrollo Local:** Copie el archivo `.env.example` como `.env` en la raíz de su proyecto y ajuste sus valores. El archivo `.env` se encuentra excluido en `.gitignore` para prevenir filtraciones de credenciales.
+- **Entornos de Producción / Contenedores / CI/CD:** No es necesario crear un archivo `.env`. Defina directamente las variables de entorno de sistema (`MW_URL`, `MW_WIKI_USER`, etc.) en su orquestador de contenedores (Docker / Kubernetes Secrets), servicios systemd o secretos de CI/CD (GitHub Actions / GitLab CI).
+- **Ubicación del Directorio de Salida (`MW_OUTPUT_DIR` / `--dir`):**
+  - **No es necesario ejecutar `mw-sync` dentro del directorio de documentación.** El programa detecta automáticamente la ruta desde la variable de entorno `MW_OUTPUT_DIR` o el flag CLI `--dir` (`-o`).
+  - **Rutas Absolutas vs Relativas:** Si especifica una ruta relativa (ej. `MW_OUTPUT_DIR=./wiki_docs`), se resolverá respecto al directorio donde ejecute el comando. Si especifica una ruta absoluta (ej. `MW_OUTPUT_DIR=/home/usuario/wiki_docs`), funcionará exactamente igual sin importar el directorio de trabajo actual desde el que ejecute la terminal.
+  - El archivo de estado `.sync_state.json` se guardará automáticamente dentro del directorio configurado (`<OUTPUT_DIR>/.sync_state.json`).
+
+---
+
+### Gestión de Múltiples Servidores MediaWiki (Patrón Multi-Wiki)
+
+Si administra varios servidores o entornos MediaWiki independientes (ej. Wiki Interna, Wiki Pública, Wiki de Proyectos), el patrón ideal y recomendado es estructurar carpetas independientes con su propio archivo `.env`:
+
+```text
+mis_wikis/
+├── wiki_interna/
+│   ├── .env               # Configuración y credenciales de la wiki interna
+│   └── wiki_docs/         # Documentación local e historial .sync_state.json
+├── wiki_publica/
+│   ├── .env               # Configuración y credenciales de la wiki pública
+│   └── wiki_docs/
+└── wiki_proyectos/
+    ├── .env               # Configuración y credenciales de la wiki de proyectos
+    └── wiki_docs/
+```
+
+**Flujo de trabajo multi-sitio:**
+Para sincronizar o publicar cambios en una wiki específica, simplemente sitúese en la carpeta correspondiente y ejecute la herramienta:
+
+```bash
+# Opción 1: Entrar en la carpeta del proyecto
+cd mis_wikis/wiki_interna
+mw-sync --upload
+
+# Opción 2: Ejecutar desde cualquier lugar usando --dir (Auto-descubrimiento de .env)
+mw-sync --upload --dir /home/usuario/mis_wikis/wiki_publica
+```
+
+Al ejecutarse, `mw_sync` cargará automáticamente las credenciales y la URL del `.env` del directorio actual o de la carpeta especificada en `--dir`, manteniendo los archivos Markdown y el registro de estado `.sync_state.json` de cada servidor totalmente aislados.
+
+> [!IMPORTANT]
+> **Reglas clave para el patrón Multi-Wiki:**
+> 1. **Auto-descubrimiento con `--dir`:** Si ejecuta desde otra ubicación sin hacer `cd`, pase `--dir /ruta/al/proyecto`. La herramienta buscará y cargará automáticamente el archivo `.env` perteneciente a ese directorio.
+> 2. **Evite definir variables `MW_*` globales en la consola (`export MW_...` o `~/.bashrc`):** Dado que las variables de entorno del sistema operativo tienen mayor precedencia que el archivo `.env`, cualquier variable global de sistema sobrescribirá el contenido de los archivos `.env` locales. Deje el entorno del sistema limpio de variables específicas (`MW_URL`, `MW_WIKI_USER`, `MW_WIKI_PASS`, `MW_OUTPUT_DIR`) para que cada proyecto responda a su propio `.env`.
+
+---
+
+### Referencia Completa de Variables de Entorno (`MW_*`)
+
+| Variable de Entorno | Descripción | Valor por Defecto | Variable Mapeada en CLI / Módulo |
+| :--- | :--- | :--- | :--- |
+| `MW_URL` | URL completa del endpoint Action API (`api.php`) | `https://wiki.example.com/api.php` | `--url` |
+| `MW_HTTP_USER` | Usuario para HTTP Basic Auth perimetral (Apache/Nginx/Proxy) | `""` (vacio) | `--http-user` |
+| `MW_HTTP_PASS` | Contraseña para HTTP Basic Auth perimetral | `""` (vacio) | `--http-password` |
+| `MW_WIKI_USER` | Usuario de la cuenta MediaWiki (Action API) | `""` (vacio) | `--wiki-user` |
+| `MW_WIKI_PASS` | Contraseña de la cuenta MediaWiki | `""` (vacio) | `--wiki-password` |
+| `MW_USER` | Usuario legado (compatibilidad como fallback si no se define `MW_HTTP_USER`/`MW_WIKI_USER`) | `""` (vacio) | `--user` |
+| `MW_PASS` | Contraseña legada (compatibilidad como fallback si no se define `MW_HTTP_PASS`/`MW_WIKI_PASS`) | `""` (vacio) | `--password` |
+| `MW_VERIFY_SSL` | Activa la verificación estricta de certificados SSL (`true`/`false`/`1`/`0`/`yes`/`no`) | `false` | `--verify-ssl` |
+| `MW_CA_BUNDLE` | Ruta a archivo CA Bundle (`.crt`/`.pem`) para certificados corporativos o autofirmados | `None` | `--ca-bundle` |
+| `MW_TIMEOUT` | Tiempo máximo de espera en segundos para cada petición HTTP/HTTPS | `10.0` | Utilizado en cliente HTTP |
+| `MW_USER_AGENT` | Cabecera `User-Agent` personalizada enviada en las peticiones a MediaWiki | `MediaWikiSync/3.0 (Python; BiDirectional)` | Utilizado en cliente HTTP |
+| `MW_OUTPUT_DIR` | Directorio local donde se guardan los archivos Markdown e imágenes | `./wiki_docs` | `--dir`, `-o` |
+| `MW_THREADS` | Número de hilos concurrentes para la descarga paralela de artículos e imágenes | `8` | `--threads`, `-t` |
+| `MW_EDIT_SUMMARY` | Resumen predeterminado en el historial de revisiones al publicar cambios en MediaWiki | `Actualizado desde local Markdown vía mediawiki_sync` | `--summary` |
+| `MW_TEST_LIVE` | *(Testing)* Habilita la suite de pruebas E2E contra un servidor MediaWiki en vivo (`1`/`0`) | `0` | Entorno de Pruebas |
+| `MW_TEST_LIVE_URL` | *(Testing)* Endpoint Action API para pruebas E2E en vivo | `http://localhost:8080/api.php` | Entorno de Pruebas |
+| `MW_TEST_WIKI_USER` | *(Testing)* Usuario administrador para pruebas E2E | `TestAdmin` | Entorno de Pruebas |
+| `MW_TEST_WIKI_PASS` | *(Testing)* Contraseña para pruebas E2E | `TestPass123` | Entorno de Pruebas |
+
+Ejemplo de plantilla `.env`:
 
 ```ini
-# URL del endpoint Action API de MediaWiki
+# Endpoint principal
 MW_URL=https://wiki.example.com/api.php
 
-# Capa 1: Autenticacion HTTP Basic (Apache / Nginx / Proxy)
-# Dejar en blanco si el servidor no requiere autenticacion HTTP perimetral
+# Capa 1: Proxy / Apache (HTTP Basic Auth)
 MW_HTTP_USER=usuario_proxy
 MW_HTTP_PASS=password_proxy
 
-# Capa 2: Cuenta de MediaWiki
+# Capa 2: MediaWiki Action API
 MW_WIKI_USER=usuario_wiki
 MW_WIKI_PASS=password_wiki
 
-# Opciones de Red y Seguridad SSL
+# Seguridad TLS/SSL y Red
 MW_VERIFY_SSL=true
-# Ruta opcional a certificados de autoridad corporativa (.crt o .pem)
-MW_CA_BUNDLE=
+MW_CA_BUNDLE=/etc/ssl/certs/corporate-ca.crt
+MW_TIMEOUT=15.0
+MW_USER_AGENT=MiEmpresaWikiSync/1.0
 
-# Rendimiento y Rutas
+# Rendimiento y Rutas Locales
 MW_OUTPUT_DIR=./wiki_docs
-MW_THREADS=8
-MW_EDIT_SUMMARY=Actualizado desde local Markdown via mw_sync
+MW_THREADS=12
+MW_EDIT_SUMMARY=Sincronizado automáticamente desde Git
 ```
 
 ---
@@ -315,29 +400,29 @@ print(wikitext)
 
 ## Referencia Completa de Parametros CLI
 
-| Argumento | Abreviatura | Descripcion | Valor por Defecto |
-| :--- | :--- | :--- | :--- |
-| `--download` | `-dl` | Modo descarga incremental de MediaWiki a local | Activo si no se indica otro modo |
-| `--upload` | `-up` | Modo subida de cambios locales a MediaWiki | Desactivado |
-| `--sanitize` | | Ejecuta el saneador de sintaxis Markdown offline | Desactivado |
-| `--diff` | | Muestra diferencias en formato unificado antes de publicar | Desactivado |
-| `--dry-run` | | Simula operaciones sin tocar disco ni hacer cambios remotos | Desactivado |
-| `--force` | `-f` | Fuerza la descarga o publicacion omitiendo verificacion de hashes | Desactivado |
-| `--yes` | `-y` | Responde afirmativamente de forma no interactiva a preguntas | Desactivado |
-| `--empty-pages` | | Lista y gestiona las paginas vacias registradas en el estado local | Desactivado |
-| `--empty-action` | | Accion ante paginas vacias (`ask`, `create-md`, `delete-remote`, `ignore`) | `ask` |
-| `--threads` | `-t` | Numero de hilos para descarga paralela | `8` |
-| `--dir` | `-o` | Directorio local de documentacion | `./wiki_docs` |
-| `--file` | | Ruta de un archivo individual (`.md` o imagen) para subir | `None` |
-| `--no-images` | | Omite la gestion de archivos multimedia | Desactivado |
-| `--summary` | | Texto para el resumen de edicion en el historial de revisiones | Configurado en `.env` |
-| `--url` | | URL del endpoint `api.php` | Configurado en `.env` |
-| `--http-user` | | Usuario para HTTP Basic Auth | Configurado en `.env` |
-| `--http-password`| | Contrasena para HTTP Basic Auth | Configurado en `.env` |
-| `--wiki-user` | | Usuario de MediaWiki (Action API) | Configurado en `.env` |
-| `--wiki-password`| | Contrasena de MediaWiki | Configurado en `.env` |
-| `--verify-ssl` | | Activa la validacion estricta de certificados TLS/SSL | Configurado en `.env` |
-| `--ca-bundle` | | Ruta a archivo CA Bundle para certificados autofirmados/privados | `None` |
+| Argumento | Abreviatura | Variable de Entorno Mapeada | Descripción | Valor por Defecto |
+| :--- | :--- | :--- | :--- | :--- |
+| `--download` | `-dl` | N/A | Modo descarga incremental de MediaWiki a local | Activo por defecto |
+| `--upload` | `-up` | N/A | Modo subida de cambios locales a MediaWiki | Desactivado |
+| `--sanitize` | | N/A | Ejecuta el saneador de sintaxis Markdown offline | Desactivado |
+| `--diff` | | N/A | Muestra diferencias en formato unificado antes de publicar | Desactivado |
+| `--dry-run` | | N/A | Simula operaciones sin tocar disco ni hacer cambios remotos | Desactivado |
+| `--force` | `-f` | N/A | Fuerza la descarga o publicacion omitiendo verificacion de hashes | Desactivado |
+| `--yes` | `-y` | N/A | Responde afirmativamente de forma no interactiva a preguntas | Desactivado |
+| `--empty-pages` | | N/A | Lista y gestiona las paginas vacias registradas en el estado local | Desactivado |
+| `--empty-action` | | N/A | Accion ante paginas vacias (`ask`, `create-md`, `delete-remote`, `ignore`) | `ask` |
+| `--threads` | `-t` | `MW_THREADS` | Numero de hilos para descarga paralela | `8` |
+| `--dir` | `-o` | `MW_OUTPUT_DIR` | Directorio local de documentacion | `./wiki_docs` |
+| `--file` | | N/A | Ruta de un archivo individual (`.md` o imagen) para subir | `None` |
+| `--no-images` | | N/A | Omite la gestion de archivos multimedia | Desactivado |
+| `--summary` | | `MW_EDIT_SUMMARY` | Texto para el resumen de edicion en el historial de revisiones | `Actualizado desde local...` |
+| `--url` | | `MW_URL` | URL del endpoint `api.php` de MediaWiki | `https://wiki.example.com/api.php` |
+| `--http-user` | | `MW_HTTP_USER` (o `MW_USER`) | Usuario para HTTP Basic Auth (Proxy/Apache) | `""` |
+| `--http-password`| | `MW_HTTP_PASS` (o `MW_PASS`) | Contrasena para HTTP Basic Auth (Proxy/Apache) | `""` |
+| `--wiki-user` | | `MW_WIKI_USER` (o `MW_USER`) | Usuario de MediaWiki (Action API) | `""` |
+| `--wiki-password`| | `MW_WIKI_PASS` (o `MW_PASS`) | Contrasena de MediaWiki (Action API) | `""` |
+| `--verify-ssl` | | `MW_VERIFY_SSL` | Activa la validacion estricta de certificados TLS/SSL | `false` |
+| `--ca-bundle` | | `MW_CA_BUNDLE` | Ruta a archivo CA Bundle para certificados autofirmados/privados | `None` |
 
 ---
 

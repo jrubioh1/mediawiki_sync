@@ -66,6 +66,17 @@ class TestUploaderConflict(unittest.TestCase):
         args2, kwargs2 = mock_client.editar_pagina.call_args_list[1]
         self.assertEqual(kwargs2.get("baserevid"), 0)
 
+    def test_env_autodiscovery_via_dir(self):
+        from mw_sync.config import actualizar_config_desde_directorio, DEFAULT_CONFIG
+        env_path = os.path.join(self.test_dir, ".env")
+        with open(env_path, "w", encoding="utf-8") as f:
+            f.write("MW_URL=https://target-wiki.example.com/api.php\nMW_WIKI_USER=target_user\n")
+
+        actualizar_config_desde_directorio(self.test_dir)
+        self.assertEqual(DEFAULT_CONFIG["MEDIAWIKI_URL"], "https://target-wiki.example.com/api.php")
+        self.assertEqual(DEFAULT_CONFIG["WIKI_USER"], "target_user")
+
 
 if __name__ == "__main__":
     unittest.main()
+

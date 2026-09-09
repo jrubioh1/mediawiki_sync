@@ -1,0 +1,78 @@
+name: CI & MediaWiki Live E2E Tests
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+jobs:
+  unit-tests:
+    name: Unit Tests (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.9", "3.10", "3.11", "3.12", "3.13"]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Run unit test suite
+        run: |
+          python3 -m unittest discover tests
+
+  e2e-live-mediawiki:
+    name: E2E Live MediaWiki Integration
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Start and initialize MediaWiki in Docker
+        run: |
+          echo "Arrancando contenedor MediaWiki..."
+          docker run -d --name test-wiki -p 8080:80 mediawiki:lts
+
+          echo "Esperando que Apache esté disponible..."
+          for i in $(seq 1 30); do
+            if curl -s -f http://localhost:8080/ > /dev/null 2>&1; then
+              echo "Apache operativo tras $i segundos."
+              break
+            fi
+            sleep 1
+          done
+
+          echo "Configurando permisos e instalando MediaWiki con SQLite..."
+          docker exec test-wiki mkdir -p /var/www/data
+          docker exec test-wiki chown -R www-data:www-data /var/www/data /var/www/html
+
+          docker exec -u www-data test-wiki php -r '
+            $file = file_exists("/var/www/html/maintenance/run.php") ? "maintenance/run.php install" : "maintenance/install.php";
+            passthru("php /var/www/html/" . $file . " --dbtype=sqlite --dbpath=/var/www/data --server=http://localhost:8080 --scriptpath=\"\" --pass=TestPass123 TestWiki TestAdmin");
+          '
+
+          echo "Habilitando subida de archivos..."
+          docker exec -u www-data test-wiki bash -c 'echo "\$wgEnableUploads = true;" >> /var/www/html/LocalSettings.php'
+
+          echo "Verificando respuesta de MediaWiki Action API..."
+          curl -s "http://localhost:8080/api.php?action=query&meta=siteinfo&format=json" | grep -q "TestWiki" && echo "MediaWiki lista y operativa!"
+
+      - name: Run Live E2E Integration Tests
+        env:
+          MW_TEST_LIVE: "1"
+          MW_TEST_LIVE_URL: "http://localhost:8080/api.php"
+          MW_TEST_WIKI_USER: "TestAdmin"
+          MW_TEST_WIKI_PASS: "TestPass123"
+        run: |
+          python3 -m unittest -v tests/test_live_wiki.py

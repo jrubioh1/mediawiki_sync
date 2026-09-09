@@ -2,7 +2,7 @@
 
 Suite nativa en Python para la sincronización bidireccional de alto rendimiento entre servidores **MediaWiki** y repositorios de documentación local en formato **Markdown (.md)**.
 
-Diseñada con una arquitectura de **cero dependencias externas** (utiliza exclusivamente la biblioteca estándar de Python 3.9+) y optimizada para entornos corporativos con doble capa de autenticación, inspección SSL personalizada y concurrencia multihilo.
+Diseñada con una arquitectura de **cero dependencias externas** (utiliza exclusivamente la biblioteca estándar de Python 3.13+) y optimizada para entornos corporativos con doble capa de autenticación, inspección SSL personalizada y concurrencia multihilo.
 
 ---
 
@@ -79,7 +79,7 @@ mediawiki-sync/
 
 ### Requisitos
 
-- Python 3.9 o superior.
+- Python 3.13 o superior.
 - Sin dependencias de terceros. No se requiere `pip` ni entornos virtuales `venv` para la ejecucion basica.
 
 ### Instalacion

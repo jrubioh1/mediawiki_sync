@@ -19,19 +19,19 @@ def main(argv=None):
         epilog="""
 Ejemplos de uso:
   # 1. Sincronización incremental (descarga solo lo nuevo/modificado con 8 hilos):
-  python3 mediawiki_sync.py
+  mw-sync
 
   # 2. Sanear y limpiar los archivos Markdown existentes (quita [editar], TOC y ****):
-  python3 mediawiki_sync.py --sanitize
+  mw-sync --sanitize
 
   # 3. Previsualizar qué se subiría a la wiki con diff:
-  python3 mediawiki_sync.py --upload --diff --dry-run
+  mw-sync --upload --diff --dry-run
 
   # 4. Subir cambios locales a la MediaWiki:
-  python3 mediawiki_sync.py --upload
+  mw-sync --upload
 
   # 5. Subir un artículo o imagen específico:
-  python3 mediawiki_sync.py --upload --file ./wiki_docs/Manual_Usuario.md
+  mw-sync --upload --file ./wiki_docs/Manual_Usuario.md
         """
     )
 

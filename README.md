@@ -17,10 +17,12 @@ Diseñada con una arquitectura de **cero dependencias externas** (utiliza exclus
    - [Subida de Cambios y Control de Conflictos](#subida-de-cambios-y-control-de-conflictos)
    - [Previsualizacion de Diferencias (Diff)](#previsualizacion-de-diferencias-diff)
    - [Saneamiento y Normalizacion Offline](#saneamiento-y-normalizacion-offline)
+   - [Control y Gestion de Paginas Vacias](#control-y-gestion-de-paginas-vacias)
 6. [Uso como Biblioteca Python](#uso-como-biblioteca-python)
 7. [Referencia Completa de Parametros CLI](#referencia-completa-de-parametros-cli)
 8. [Seguridad y Buenas Practicas](#seguridad-y-buenas-practicas)
 9. [Bateria de Pruebas](#bateria-de-pruebas)
+10. [Licencia](#licencia)
 
 ---
 
@@ -46,55 +48,105 @@ Diseñada con una arquitectura de **cero dependencias externas** (utiliza exclus
 
 ## Arquitectura y Componentes
 
-El proyecto se estructura en un paquete desacoplado `mw_sync` junto con su ejecutable `mediawiki_sync.py`:
+El proyecto se estructura como paquete estándar de Python `mw_sync` gestionado con Poetry:
 
 ```text
 mediawiki-sync/
-├── mediawiki_sync.py           # Script principal ejecutable (punto de entrada CLI)
-├── MANUAL_USO_MEDIAWIKI_SYNC.md# Manual detallado en espanol
-├── README.md                   # Documentacion tecnica del repositorio
-├── .env.example                # Plantilla de configuracion de entorno
-├── .env                        # Variables y credenciales (excluido de git)
-├── .gitignore                  # Exclusion de credenciales y cache local
-├── mw_sync/                    # Paquete de la aplicacion
-│   ├── __init__.py             # Exportaciones de la API publica y version
-│   ├── cli.py                  # Parseo de argumentos y logica de terminal
+├── pyproject.toml              # Definición del paquete y configuración de Poetry (PEP 621)
+├── LICENSE                     # Licencia GNU General Public License v3 (GPL-3.0)
+├── MANUAL_USO_MEDIAWIKI_SYNC.md# Manual detallado de usuario y casos de uso
+├── README.md                   # Documentación técnica del repositorio
+├── .env.example                # Plantilla de configuración de entorno
+├── .env                        # Variables y credenciales locales (excluido de Git)
+├── .gitignore                  # Exclusión de credenciales, dist/ y temporales
+├── .github/
+│   └── workflows/
+│       └── e2e-mediawiki.yml   # CI/CD: Matriz de tests unitarios y pruebas E2E con MediaWiki en Docker
+├── mw_sync/                    # Paquete principal de la aplicación
+│   ├── __init__.py             # Exportaciones de la API pública y versión del paquete
+│   ├── __main__.py             # Punto de entrada para ejecución modular (`python3 -m mw_sync`)
+│   ├── cli.py                  # Parseo de argumentos y lógica de terminal
 │   ├── client.py               # Cliente HTTP/HTTPS para MediaWiki Action API
-│   ├── config.py               # Gestion de configuracion y resolucion de credenciales
+│   ├── config.py               # Gestión de configuración y resolución de credenciales
 │   ├── downloader.py           # Motor de descarga incremental y multihilo
+│   ├── empty_pages.py          # Detección y gestión de páginas remotas vacías
 │   ├── state.py                # Persistencia de estado local (.sync_state.json)
 │   ├── uploader.py             # Motor de subida, diff y control de conflictos
 │   └── converters/
 │       ├── html_to_md.py       # Conversor HTML a Markdown con sanitizado
-│       ├── md_to_wikitext.py   # Conversor Markdown a Wikitext estandar
+│       ├── md_to_wikitext.py   # Conversor Markdown a Wikitext estándar
 │       └── sanitizer.py        # Limpieza masiva de colecciones Markdown locales
 └── tests/
-    ├── test_converters.py      # Bateria de pruebas unitarias para conversores
-    └── test_uploader.py        # Pruebas de resolucion de titulos y conflictos
+    ├── test_converters.py      # Pruebas unitarias para conversores de formato
+    ├── test_uploader.py        # Pruebas de subida, detección de títulos y conflictos
+    ├── test_empty_pages.py     # Pruebas de control de páginas vacías y eliminación
+    └── test_live_wiki.py       # Pruebas E2E de integración real contra servidor MediaWiki
 ```
 
 ---
 
-## Requisitos e Instalacion
+## Requisitos e Instalación
 
 ### Requisitos
 
 - Python 3.13 o superior.
-- Sin dependencias de terceros. No se requiere `pip` ni entornos virtuales `venv` para la ejecucion basica.
+- Sin dependencias externas obligatorias (arquitectura nativa con módulos estándar de Python).
 
-### Instalacion
+### Preparación del Entorno
 
 1. Clonar el repositorio:
    ```bash
-   git clone <URL_DEL_REPOSITORIO>
-   cd mediawiki2.0
+   git clone https://github.com/jrubioh1/mediawiki_sync.git
+   cd mediawiki_sync
    ```
 
-2. Preparar el archivo de configuracion:
+2. Preparar el archivo de configuración con sus credenciales:
    ```bash
    cp .env.example .env
    chmod 600 .env
    ```
+
+### Opciones de Instalación y Empaquetado
+
+El proyecto puede utilizarse como paquete global/virtualenv o de forma autónoma:
+
+#### Opción 1: Entorno de desarrollo con Poetry (Recomendado)
+Instala el proyecto en modo editable registrando los comandos ejecutables `mw-sync` y `mediawiki-sync`:
+```bash
+poetry install
+
+# Ejecutar comandos directamente en el entorno:
+poetry run mw-sync --help
+# o activando el entorno:
+source .venv/bin/activate
+mw-sync --help
+```
+
+#### Opción 2: Instalación vía Wheel (.whl)
+Genera el paquete estándar y lo instala en cualquier entorno Python:
+```bash
+# Construir paquete distribuible (en dist/):
+poetry build
+
+# Instalar el wheel:
+pip install dist/mediawiki_sync-3.1.0-py3-none-any.whl
+
+# Comandos de terminal disponibles globalmente en el entorno:
+mw-sync --help
+mediawiki-sync --help
+```
+
+#### Opción 3: Instalación con soporte opcional de alto rendimiento HTTP
+Si se desea aceleración de red mediante pool de conexiones `requests` / `urllib3`:
+```bash
+pip install ".[fast-http]"
+```
+
+#### Opción 4: Ejecución directa como módulo
+Si se ejecuta directamente desde el clon del repositorio sin haber instalado el paquete en el entorno:
+```bash
+python3 -m mw_sync --help
+```
 
 ---
 
@@ -130,24 +182,24 @@ MW_EDIT_SUMMARY=Actualizado desde local Markdown via mw_sync
 
 ## Guia de Uso CLI
 
-El comando unificado `mediawiki_sync.py` permite alternar entre modos de operacion.
+Puede ejecutarse mediante los comandos de paquete registrados en la terminal (`mw-sync` en su forma corta o `mediawiki-sync` en su forma larga), o bien como módulo mediante `python3 -m mw_sync`. Todos aceptan exactamente los mismos parámetros.
 
 ### Descarga Incremental Concurrente
 
-Por defecto, ejecutar el script sin argumentos inicia la descarga incremental hacia la carpeta configurada (por defecto `./wiki_docs`):
+Por defecto, ejecutar el comando sin argumentos inicia la descarga incremental hacia la carpeta configurada (por defecto `./wiki_docs`):
 
 ```bash
 # Descarga incremental estandar (8 hilos en paralelo):
-python3 mediawiki_sync.py
+mw-sync
 
 # Ajustar el numero de hilos de concurrencia:
-python3 mediawiki_sync.py --threads 16
+mw-sync --threads 16
 
 # Forzar la re-descarga de todos los articulos ignorando el estado local:
-python3 mediawiki_sync.py --force
+mw-sync --force
 
 # Descargar solo el texto de los articulos, omitiendo imagenes multimedia:
-python3 mediawiki_sync.py --no-images
+mw-sync --no-images
 ```
 
 ### Subida de Cambios y Control de Conflictos
@@ -156,19 +208,19 @@ El modo `--upload` escanea la carpeta local de documentacion, calcula hashes SHA
 
 ```bash
 # Simular subida (Dry-Run) para ver que cambios se aplicarian sin alterar el servidor:
-python3 mediawiki_sync.py --upload --dry-run
+mw-sync --upload --dry-run
 
 # Subir todos los archivos locales modificados:
-python3 mediawiki_sync.py --upload
+mw-sync --upload
 
 # Subir unicamente un archivo especifico:
-python3 mediawiki_sync.py --upload --file ./wiki_docs/Manual_de_Usuario.md
+mw-sync --upload --file ./wiki_docs/Manual_de_Usuario.md
 
 # Subir una imagen al repositorio multimedia de la wiki:
-python3 mediawiki_sync.py --upload --file ./wiki_docs/images/esquema_red.png
+mw-sync --upload --file ./wiki_docs/images/esquema_red.png
 
 # Omitir confirmaciones interactivas al resolver un conflicto (sobrescritura forzada):
-python3 mediawiki_sync.py --upload --force --yes
+mw-sync --upload --force --yes
 ```
 
 #### Protocolo de Resolucion de Conflictos
@@ -187,7 +239,7 @@ Si durante la subida el servidor responde con un conflicto de edicion (o si la r
 Permite examinar la salida Wikitext generada a partir de los archivos Markdown locales frente a lo que reside en MediaWiki:
 
 ```bash
-python3 mediawiki_sync.py --upload --diff --dry-run
+mw-sync --upload --diff --dry-run
 ```
 
 ### Saneamiento y Normalizacion Offline
@@ -196,10 +248,28 @@ Permite procesar archivos Markdown en local para eliminar restos de ediciones pr
 
 ```bash
 # Ejecutar saneamiento real sobre el directorio local:
-python3 mediawiki_sync.py --sanitize
+mw-sync --sanitize
 
 # Comprobar que archivos serian alterados sin modificarlos en disco:
-python3 mediawiki_sync.py --sanitize --dry-run
+mw-sync --sanitize --dry-run
+```
+
+### Control y Gestion de Paginas Vacias
+
+Cuando una pagina en MediaWiki carece de contenido, el sincronizador la registra en `.sync_state.json` evitando fallos de descarga, y ofrece opciones de resolucion:
+
+```bash
+# Consultar y gestionar interactivamente las paginas vacias registradas:
+mw-sync --empty-pages
+
+# Crear plantillas .md locales con encabezado y frontmatter listos para rellenar:
+mw-sync --empty-action create-md
+
+# Eliminar las paginas vacias del servidor MediaWiki (action=delete):
+mw-sync --empty-action delete-remote --yes
+
+# Omitir paginas vacias en ejecuciones automatizadas:
+mw-sync --empty-action ignore
 ```
 
 ---
@@ -290,13 +360,25 @@ print(wikitext)
 
 ## Bateria de Pruebas
 
-El repositorio incluye un conjunto de pruebas unitarias automatizadas que validan la suite sin necesidad de conexion a internet ni a un servidor MediaWiki activo:
+El repositorio incluye pruebas unitarias offline y pruebas de integración continua E2E contra instancias reales de MediaWiki:
 
 ```bash
+# Ejecutar suite completa de pruebas unitarias:
 python3 -m unittest discover tests
+
+# O utilizando pytest en el entorno virtual:
+poetry run pytest tests
 ```
 
 ### Cobertura de Pruebas
 
-- `tests/test_converters.py`: Valida la conversion bidireccional HTML -> Markdown y Markdown -> Wikitext, verificando listas ordenadas y no ordenadas, tablas complejas, enlaces relativos locales, bloques de codigo y remocion de artefactos (`__TOC__`, `[editar]`).
-- `tests/test_uploader.py`: Valida la extraccion de titulos de articulos desde metadatos frontmatter y encabezados `#`, asi como el manejo del flujo de deteccion y alerta ante conflictos de revision remota.
+- `tests/test_converters.py`: Valida la conversión bidireccional HTML -> Markdown y Markdown -> Wikitext, verificando listas continuas anidadas (`#`, `#*`), tablas complejas, enlaces relativos locales, bloques de código y remoción de artefactos (`__TOC__`, `[editar]`).
+- `tests/test_uploader.py`: Valida la extracción de títulos desde metadatos frontmatter y encabezados `#`, así como el flujo de detección y alerta ante conflictos de revisión remota (`baserevid`).
+- `tests/test_empty_pages.py`: Valida la detección de páginas vacías, creación de plantillas Markdown locales, registro en `.sync_state.json` y eliminación remota (`action=delete`).
+- `tests/test_live_wiki.py`: Batería de integración en vivo ejecutada en GitHub Actions contra un contenedor Docker de MediaWiki real (login, upload, download, detección de conflictos y ciclo de vida de páginas vacías).
+
+---
+
+## Licencia
+
+Este proyecto se distribuye bajo los términos de la licencia **GNU General Public License v3.0 or later (GPL-3.0-or-later)**. Para más información, consulte el archivo [LICENSE](LICENSE).

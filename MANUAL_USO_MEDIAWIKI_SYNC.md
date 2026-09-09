@@ -1,4 +1,4 @@
-# Manual de Uso: Sincronizador MediaWiki <-> Markdown (v3.0)
+# Manual de Uso: Sincronizador MediaWiki <-> Markdown (v3.1)
 
 Herramienta nativa en Python para la sincronización bidireccional entre servidores **MediaWiki** y archivos locales en formato **Markdown (.md)** con soporte multihilo, descarga incremental inteligente, imágenes, control de conflictos y autenticación **HTTP Basic Auth** (sin dependencias externas).
 
@@ -7,13 +7,14 @@ Herramienta nativa en Python para la sincronización bidireccional entre servido
 ## Indice
 1. [Características Principales (v3.1)](#características-principales-v31)
 2. [Estructura del Proyecto y Módulos](#estructura-del-proyecto-y-módulos)
-3. [Configuración Segura (.env)](#configuración-segura-env)
-4. [Modo 1: Descarga Incremental Concurrente](#modo-1-descarga-incremental-concurrente)
-5. [Modo 2: Subida y Control de Conflictos (--upload)](#modo-2-subida-y-control-de-conflictos---upload)
-6. [Modo 3: Saneamiento Offline de Archivos (--sanitize)](#modo-3-saneamiento-offline-de-archivos---sanitize)
-7. [Modo 4: Control y Gestión de Páginas Vacías (--empty-pages)](#modo-4-control-y-gestión-de-páginas-vacías---empty-pages)
-8. [Referencia de Parámetros CLI](#referencia-de-parámetros-cli)
-9. [Pruebas Unitarias](#pruebas-unitarias)
+3. [Formas de Ejecución (Comando CLI o Script)](#formas-de-ejecución-comando-cli-o-script)
+4. [Configuración Segura (.env)](#configuración-segura-env)
+5. [Modo 1: Descarga Incremental Concurrente](#modo-1-descarga-incremental-concurrente)
+6. [Modo 2: Subida y Control de Conflictos (--upload)](#modo-2-subida-y-control-de-conflictos---upload)
+7. [Modo 3: Saneamiento Offline de Archivos (--sanitize)](#modo-3-saneamiento-offline-de-archivos---sanitize)
+8. [Modo 4: Control y Gestión de Páginas Vacías (--empty-pages)](#modo-4-control-y-gestión-de-páginas-vacías---empty-pages)
+9. [Referencia de Parámetros CLI](#referencia-de-parámetros-cli)
+10. [Batería de Pruebas](#batería-de-pruebas)
 
 ---
 
@@ -28,6 +29,7 @@ Herramienta nativa en Python para la sincronización bidireccional entre servido
   * Convierte listas anidadas preservando niveles de indentación (`*`, `**`, `***`, `#`, `##`).
 * **Prevención de Conflictos de Edición (`baserevid`):** Durante la subida, comprueba si alguien modificó la página en el servidor para evitar sobreescrituras accidentales. Si hay conflicto, descarga automáticamente una copia de seguridad `<archivo>.servidor.conflict`.
 * **Cero Dependencias Externas:** Funciona exclusivamente con las librerías nativas de Python (`urllib`, `re`, `concurrent.futures`, `json`, `argparse`). No requiere instalar librerías pesadas ni frameworks de terceros.
+* **Empaquetado Moderno con Poetry:** Distribuible como paquete estándar `.whl`, configurable en `pyproject.toml` y con comandos ejecutables en consola (`mw-sync` y `mediawiki-sync`).
 * **Seguridad Reforzada:** Credenciales cargadas automáticamente desde `.env` (ignorado por Git) con solicitud interactiva por consola (`getpass`) si no están configuradas.
 
 ---
@@ -35,13 +37,20 @@ Herramienta nativa en Python para la sincronización bidireccional entre servido
 ## Estructura del Proyecto y Módulos
 
 ```text
-/home/ay/Escritorio/mediawiki2.0/
-├── mediawiki_sync.py           # Script principal ejecutable (wrapper CLI)
+mediawiki-sync/
+├── pyproject.toml              # Configuración de paquete Poetry (PEP 621)
+├── LICENSE                     # Licencia GNU GPL v3
+├── MANUAL_USO_MEDIAWIKI_SYNC.md# Este manual de usuario
+├── README.md                   # Documentación técnica general
 ├── .env.example                # Plantilla de variables de entorno
 ├── .env                        # Credenciales locales (IGNORADO POR GIT)
-├── .gitignore                  # Protección de credenciales y temporales
+├── .gitignore                  # Protección de credenciales, dist/ y temporales
+├── .github/
+│   └── workflows/
+│       └── e2e-mediawiki.yml   # CI/CD: Batería de pruebas unitarias y E2E
 ├── mw_sync/                    # Paquete modular nativo
 │   ├── __init__.py             # Exportación pública y versión
+│   ├── __main__.py             # Punto de entrada modular (python3 -m mw_sync)
 │   ├── config.py               # Cargador de .env y opciones por defecto
 │   ├── client.py               # Cliente MediaWiki Action API (reintentos, tokens, borrado)
 │   ├── state.py                # Gestión de .sync_state.json y hashes SHA-256
@@ -56,14 +65,32 @@ Herramienta nativa en Python para la sincronización bidireccional entre servido
 ├── tests/
 │   ├── test_converters.py      # Pruebas unitarias de conversión
 │   ├── test_uploader.py        # Pruebas unitarias de subida y conflictos
-│   └── test_empty_pages.py     # Pruebas de control de páginas vacías y borrado
-└── wiki_docs/                  # Directorio de documentación sincronizada (ignorado en Git)
+│   ├── test_empty_pages.py     # Pruebas de control de páginas vacías y borrado
+│   └── test_live_wiki.py       # Pruebas E2E en vivo con servidor MediaWiki Docker
+└── wiki_docs/                  # Directorio local de documentación (ignorado en Git)
     ├── .sync_state.json        # Registro de hashes y revision IDs
     ├── 00_INDICE_MEDIAWIKI.md  # Índice general navegable
     ├── *.md                    # Artículos individuales en Markdown
     └── images/                 # Imágenes y archivos multimedia
 ```
 
+
+## Formas de Ejecución (Comando CLI o Módulo)
+
+El sincronizador se ejecuta mediante cualquiera de las siguientes modalidades:
+
+1. **Comando corto de terminal (Recomendado para uso diario):**
+   ```bash
+   mw-sync --help
+   ```
+2. **Comando largo de terminal (Recomendado para scripts / automatizaciones):**
+   ```bash
+   mediawiki-sync --help
+   ```
+3. **Ejecución directa como módulo de Python:**
+   ```bash
+   python3 -m mw_sync --help
+   ```
 
 ---
 
@@ -100,16 +127,16 @@ Sincroniza el contenido desde la MediaWiki hacia tu carpeta local. Solo descarga
 
 ```bash
 # 1. Descarga incremental rápida (8 hilos en paralelo):
-python3 mediawiki_sync.py
+mw-sync
 
 # 2. Especificar más hilos (ej. 12 hilos):
-python3 mediawiki_sync.py --threads 12
+mw-sync --threads 12
 
 # 3. Forzar re-descarga completa de todo el wiki:
-python3 mediawiki_sync.py --force
+mw-sync --force
 
 # 4. Descargar solo texto sin imágenes:
-python3 mediawiki_sync.py --no-images
+mw-sync --no-images
 ```
 
 ---
@@ -120,19 +147,19 @@ Detecta archivos `.md` o imágenes modificados localmente y los publica en la Me
 
 ```bash
 # 1. Simulación (DRY-RUN): Comprueba qué se subiría sin tocar el servidor:
-python3 mediawiki_sync.py --upload --dry-run
+mw-sync --upload --dry-run
 
 # 2. Previsualizar diferencias de Wikitext antes de subir:
-python3 mediawiki_sync.py --upload --diff --dry-run
+mw-sync --upload --diff --dry-run
 
 # 3. Subir todos los cambios locales detectados:
-python3 mediawiki_sync.py --upload
+mw-sync --upload
 
 # 4. Subir únicamente un archivo específico:
-python3 mediawiki_sync.py --upload --file ./wiki_docs/Manual_de_Usuario.md
+mw-sync --upload --file ./wiki_docs/Manual_de_Usuario.md
 
 # 5. Subir una imagen específica:
-python3 mediawiki_sync.py --upload --file ./wiki_docs/images/diagrama.png
+mw-sync --upload --file ./wiki_docs/images/diagrama.png
 ```
 
 ---
@@ -143,10 +170,10 @@ Permite limpiar en bloque archivos Markdown locales (útil para reparar archivos
 
 ```bash
 # Sanear todos los archivos .md en ./wiki_docs:
-python3 mediawiki_sync.py --sanitize
+mw-sync --sanitize
 
 # Simular saneamiento sin modificar archivos:
-python3 mediawiki_sync.py --sanitize --dry-run
+mw-sync --sanitize --dry-run
 ```
 
 ---
@@ -161,22 +188,21 @@ Cuando una página remota en MediaWiki no tiene contenido o texto renderizable, 
 
 ```bash
 # 1. Consultar y gestionar interactivamente páginas vacías registradas:
-python3 mediawiki_sync.py --empty-pages
+mw-sync --empty-pages
 
 # 2. Descargar forzando creación automática de .md vacíos para rellenar:
-python3 mediawiki_sync.py --empty-action create-md
+mw-sync --empty-action create-md
 
 # 3. Descargar forzando eliminación de páginas vacías del servidor remoto:
-python3 mediawiki_sync.py --empty-action delete-remote --yes
+mw-sync --empty-action delete-remote --yes
 
 # 4. Descargar silenciando páginas vacías (modo no interactivo / scripts):
-python3 mediawiki_sync.py --empty-action ignore
+mw-sync --empty-action ignore
 ```
 
 ---
 
-## Referencia de Parámetros CLI (mediawiki_sync.py)
-
+## Referencia de Parámetros CLI
 
 | Parámetro | Abreviatura | Descripción | Valor por defecto |
 | :--- | :--- | :--- | :--- |
@@ -204,11 +230,21 @@ python3 mediawiki_sync.py --empty-action ignore
 
 ---
 
-## Pruebas Unitarias
+## Batería de Pruebas
 
-Para validar los conversores y la integridad del sistema:
+Para validar los conversores, el sistema de empaquetado y la integridad general:
 
 ```bash
+# Pruebas unitarias nativas (sin dependencias):
 python3 -m unittest discover tests
+
+# O mediante Poetry:
+poetry run pytest tests
 ```
+
+### Cobertura de la Suite:
+- `tests/test_converters.py`: Conversiones bidireccionales HTML/Markdown/Wikitext, tablas, enlaces y anidación de listas.
+- `tests/test_uploader.py`: Extracción de metadatos, detección de conflictos `baserevid` y respaldo automático.
+- `tests/test_empty_pages.py`: Detección de páginas vacías, plantillas locales y acción de borrado remoto.
+- `tests/test_live_wiki.py`: Pruebas de integración E2E en vivo contra contenedor Docker con MediaWiki real.
 

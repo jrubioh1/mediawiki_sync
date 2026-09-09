@@ -5,21 +5,23 @@ Herramienta nativa en Python para la sincronización bidireccional entre servido
 ---
 
 ## Indice
-1. [Características Principales (v3.0)](#características-principales-v30)
+1. [Características Principales (v3.1)](#características-principales-v31)
 2. [Estructura del Proyecto y Módulos](#estructura-del-proyecto-y-módulos)
 3. [Configuración Segura (.env)](#configuración-segura-env)
 4. [Modo 1: Descarga Incremental Concurrente](#modo-1-descarga-incremental-concurrente)
 5. [Modo 2: Subida y Control de Conflictos (--upload)](#modo-2-subida-y-control-de-conflictos---upload)
 6. [Modo 3: Saneamiento Offline de Archivos (--sanitize)](#modo-3-saneamiento-offline-de-archivos---sanitize)
-7. [Referencia de Parámetros CLI](#referencia-de-parámetros-cli)
-8. [Pruebas Unitarias](#pruebas-unitarias)
+7. [Modo 4: Control y Gestión de Páginas Vacías (--empty-pages)](#modo-4-control-y-gestión-de-páginas-vacías---empty-pages)
+8. [Referencia de Parámetros CLI](#referencia-de-parámetros-cli)
+9. [Pruebas Unitarias](#pruebas-unitarias)
 
 ---
 
-## Características Principales (v3.0)
+## Características Principales (v3.1)
 
 * **Descarga Incremental Inteligente por `revid`:** Compara las revisiones del servidor en lotes de 50. Solo descarga los artículos que hayan cambiado realmente, reduciendo el tiempo de sincronización de minutos a pocos segundos.
 * **Descarga Concurrente Multihilo (`ThreadPoolExecutor`):** Paraleliza la descarga de páginas e imágenes con `--threads` (por defecto 8 hilos), multiplicando por 10 la velocidad.
+* **Control Inteligente de Páginas Vacías:** Detección de páginas sin contenido en la wiki sin generar falsos errores de descarga. Permite elegir interactivamente o por CLI si crear plantillas `.md` vacías locales para rellenar, eliminarlas del servidor remoto (`action=delete`), u omitirlas silenciando reintentos inútiles.
 * **Conversión Robusta sin Artefactos:**
   * Elimina por completo sumarios (TOC), enlaces `[editar]` y asteriscos huérfanos.
   * Mapea enlaces internos de MediaWiki a archivos locales relativos `./Articulo.md` para lectura offline fluida (Obsidian, VS Code, Typora).
@@ -41,8 +43,9 @@ Herramienta nativa en Python para la sincronización bidireccional entre servido
 ├── mw_sync/                    # Paquete modular nativo
 │   ├── __init__.py             # Exportación pública y versión
 │   ├── config.py               # Cargador de .env y opciones por defecto
-│   ├── client.py               # Cliente MediaWiki Action API (reintentos, tokens)
+│   ├── client.py               # Cliente MediaWiki Action API (reintentos, tokens, borrado)
 │   ├── state.py                # Gestión de .sync_state.json y hashes SHA-256
+│   ├── empty_pages.py          # Módulo de control y gestión de páginas vacías
 │   ├── downloader.py           # Motor de descarga incremental multihilo
 │   ├── uploader.py             # Motor de subida y detección de conflictos
 │   ├── cli.py                  # Interfaz unificada de comandos
@@ -52,7 +55,8 @@ Herramienta nativa en Python para la sincronización bidireccional entre servido
 │       └── sanitizer.py        # Limpiador y saneador masivo de archivos locales
 ├── tests/
 │   ├── test_converters.py      # Pruebas unitarias de conversión
-│   └── test_uploader.py        # Pruebas unitarias de subida y conflictos
+│   ├── test_uploader.py        # Pruebas unitarias de subida y conflictos
+│   └── test_empty_pages.py     # Pruebas de control de páginas vacías y borrado
 └── wiki_docs/                  # Directorio de documentación sincronizada (ignorado en Git)
     ├── .sync_state.json        # Registro de hashes y revision IDs
     ├── 00_INDICE_MEDIAWIKI.md  # Índice general navegable
@@ -147,6 +151,30 @@ python3 mediawiki_sync.py --sanitize --dry-run
 
 ---
 
+## Modo 4: Control y Gestión de Páginas Vacías (--empty-pages)
+
+Cuando una página remota en MediaWiki no tiene contenido o texto renderizable, el sistema no la trata como un error de descarga sino que la registra en el estado local (`.sync_state.json`). Al finalizar la descarga o al invocar `--empty-pages`, se ofrecen 3 opciones:
+
+1. **Crear plantillas `.md` locales vacías:** Genera el archivo con frontmatter y título `# Título`, listo para rellenar offline y subir luego con `--upload`.
+2. **Eliminar del servidor remoto (`action=delete`):** Borra las páginas de la MediaWiki (requiere permisos de borrado en la wiki).
+3. **Omitir / Ignorar:** Registra la página como omitida para no volver a descargarla ni reportar fallos, hasta que alguien en la wiki le añada contenido nuevo (nuevo `revid`).
+
+```bash
+# 1. Consultar y gestionar interactivamente páginas vacías registradas:
+python3 mediawiki_sync.py --empty-pages
+
+# 2. Descargar forzando creación automática de .md vacíos para rellenar:
+python3 mediawiki_sync.py --empty-action create-md
+
+# 3. Descargar forzando eliminación de páginas vacías del servidor remoto:
+python3 mediawiki_sync.py --empty-action delete-remote --yes
+
+# 4. Descargar silenciando páginas vacías (modo no interactivo / scripts):
+python3 mediawiki_sync.py --empty-action ignore
+```
+
+---
+
 ## Referencia de Parámetros CLI (mediawiki_sync.py)
 
 
@@ -158,7 +186,9 @@ python3 mediawiki_sync.py --sanitize --dry-run
 | `--diff` | | Muestra previsualización unificada de Wikitext | Falso |
 | `--dry-run` | | Simula operaciones sin alterar servidor ni disco | Falso |
 | `--force` | `-f` | Fuerza descarga/subida omitiendo comprobación de hash/revid | Falso |
-| `--yes` | `-y` | Responde afirmativamente de forma no interactiva (ej. forzar conflictos) | Falso |
+| `--yes` | `-y` | Responde afirmativamente de forma no interactiva (ej. forzar conflictos o borrado) | Falso |
+| `--empty-pages` | | Lista y gestiona las páginas vacías registradas en el estado local | Falso |
+| `--empty-action` | | Acción automática ante páginas vacías (`ask`, `create-md`, `delete-remote`, `ignore`) | `ask` |
 | `--threads` | `-t` | Número de hilos concurrentes para descarga | `8` |
 | `--dir` | `-o` | Directorio local de documentación | `./wiki_docs` |
 | `--file` | | Archivo `.md` o imagen específico a subir | `None` |

@@ -440,6 +440,38 @@ class MediaWikiClient:
             }
         return {"exito": False, "error": str(res)}
 
+    def eliminar_pagina(self, titulo: str, motivo: str = "Página vacía eliminada por mediawiki_sync") -> dict:
+        """
+        Elimina una página en MediaWiki mediante action=delete (requiere permisos de administrador).
+        """
+        token = self.obtener_token_csrf()
+        payload = {
+            "action": "delete",
+            "title": titulo,
+            "reason": motivo,
+            "token": token
+        }
+
+        try:
+            res = self._api_post(payload)
+        except Exception as e:
+            return {"exito": False, "error": str(e)}
+
+        if "error" in res:
+            err = res["error"]
+            codigo = err.get("code", "")
+            info = err.get("info", str(err))
+            return {"exito": False, "error": info, "code": codigo}
+
+        delete_info = res.get("delete", {})
+        if "title" in delete_info:
+            return {
+                "exito": True,
+                "title": delete_info.get("title"),
+                "logid": delete_info.get("logid")
+            }
+        return {"exito": False, "error": str(res)}
+
     def subir_archivo(self, nombre_archivo: str, ruta_local: str, comentario: str) -> dict:
         """Sube o actualiza un archivo multimedia en la MediaWiki."""
         token = self.obtener_token_csrf()

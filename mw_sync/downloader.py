@@ -12,10 +12,12 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from mw_sync.client import MediaWikiClient
 from mw_sync.state import SyncState, calcular_sha256
 from mw_sync.converters.html_to_md import html_a_markdown, sanitizar_nombre_archivo
+from mw_sync.empty_pages import gestionar_paginas_vacias
 
 
 def ejecutar_descarga(cliente: MediaWikiClient, output_dir: str, forzar: bool = False,
-                      no_imagenes: bool = False, max_hilos: int = 8):
+                      no_imagenes: bool = False, max_hilos: int = 8,
+                      empty_action: str = "ask", auto_confirmar: bool = False):
     """
     Descarga o actualiza de manera incremental todos los artículos e imágenes de la MediaWiki.
     """
@@ -60,6 +62,10 @@ def ejecutar_descarga(cliente: MediaWikiClient, output_dir: str, forzar: bool = 
 
         existe_local = os.path.isfile(ruta_archivo) and os.path.getsize(ruta_archivo) > 50
 
+        # Si no se fuerza y está registrada como página vacía omitida en esta revisión
+        if not forzar and estado.es_pagina_vacia_omitida(titulo, rev_remota):
+            continue
+
         # Si forzar está activo, o no existe local, o la revisión remota es más nueva
         if forzar or not existe_local or (rev_remota > 0 and rev_remota != rev_local):
             articulos_pendientes.append((titulo, nombre_archivo, ruta_archivo, rev_remota))
@@ -74,6 +80,7 @@ def ejecutar_descarga(cliente: MediaWikiClient, output_dir: str, forzar: bool = 
     # 3. Descarga concurrente de artículos pendientes
     art_descargados = 0
     art_errores = 0
+    paginas_vacias_detectadas = []
 
     if articulos_pendientes:
         print(f"\n3/4. Descargando {len(articulos_pendientes)} artículos con {max_hilos} hilos...")
@@ -81,14 +88,16 @@ def ejecutar_descarga(cliente: MediaWikiClient, output_dir: str, forzar: bool = 
         def _descargar_un_articulo(item):
             t_art, nom_f, ruta_f, rev_esperada = item
             datos_pag = cliente.descargar_contenido_pagina(t_art)
-            if not datos_pag or not datos_pag.get("html"):
-                return False, t_art, nom_f, 0, "Error al descargar contenido"
+            if datos_pag is None:
+                return "error", t_art, nom_f, 0, "Error al descargar contenido", rev_esperada
 
-            md_content, imgs_articulo = html_a_markdown(datos_pag["html"], t_art)
-            if not md_content.strip():
-                return False, t_art, nom_f, 0, "Contenido vacío"
-
+            html = datos_pag.get("html", "")
+            md_content, imgs_articulo = html_a_markdown(html, t_art)
             revid_final = datos_pag.get("revid") or rev_esperada
+
+            if not md_content.strip():
+                return "vacia", t_art, nom_f, 0, "Página vacía", revid_final
+
             fecha_actual = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             url_articulo = f"{cliente.base_url}/index.php?title={urllib.parse.quote(t_art)}"
 
@@ -111,21 +120,37 @@ def ejecutar_descarga(cliente: MediaWikiClient, output_dir: str, forzar: bool = 
 
             with lock_estado:
                 estado.registrar_articulo(nom_f, t_art, h_sha256, revid_final)
+                estado.eliminar_registro_vacia(t_art)
 
-            return True, t_art, nom_f, tam_bytes, imgs_articulo
+            return "ok", t_art, nom_f, tam_bytes, imgs_articulo, revid_final
 
         with ThreadPoolExecutor(max_workers=max_hilos) as executor:
             futuros = [executor.submit(_descargar_un_articulo, it) for it in articulos_pendientes]
             for idx, fut in enumerate(as_completed(futuros), 1):
-                exito, t_art, nom_f, tam, extra = fut.result()
-                if exito:
+                tipo_res, t_art, nom_f, tam, extra, rev_art = fut.result()
+                if tipo_res == "ok":
                     art_descargados += 1
                     articulos_actualizados_locales.append((t_art, nom_f, tam))
                     if idx % 10 == 0 or idx == len(articulos_pendientes):
                         print(f"  [{idx}/{len(articulos_pendientes)}] Descargado: {t_art} ({tam // 1024 + 1} KB)")
+                elif tipo_res == "vacia":
+                    ruta_f = os.path.join(output_dir, nom_f)
+                    paginas_vacias_detectadas.append((t_art, nom_f, ruta_f, rev_art))
+                    print(f"  [AVISO] Página vacía detectada: '{t_art}'")
                 else:
                     art_errores += 1
                     print(f"  [ERROR] Fallo en '{t_art}': {extra}")
+
+        if paginas_vacias_detectadas:
+            gestionar_paginas_vacias(
+                cliente=cliente,
+                estado=estado,
+                output_dir=output_dir,
+                paginas_vacias=paginas_vacias_detectadas,
+                accion=empty_action,
+                articulos_actualizados_locales=articulos_actualizados_locales,
+                auto_confirmar=auto_confirmar
+            )
 
     # 4. Descarga de imágenes
     if not no_imagenes:
@@ -184,6 +209,8 @@ def ejecutar_descarga(cliente: MediaWikiClient, output_dir: str, forzar: bool = 
     print(f"Tiempo total:                      {duracion:.1f} segundos")
     print(f"Artículos nuevos / actualizados:   {art_descargados}")
     print(f"Artículos conservados sin cambios: {len(articulos_actualizados_locales) - art_descargados}")
+    if paginas_vacias_detectadas:
+        print(f"Páginas vacías gestionadas:        {len(paginas_vacias_detectadas)}")
     print(f"Errores en artículos:              {art_errores}")
     print(f"Índice actualizado:                {os.path.abspath(ruta_indice)}")
     print("=" * 75)

@@ -28,6 +28,7 @@ class SyncState:
         self.datos = {
             "articulos": {},
             "imagenes": {},
+            "paginas_vacias": {},
             "ultima_sincronizacion": None,
             "version_esquema": "3.0"
         }
@@ -40,6 +41,8 @@ class SyncState:
                     cargados = json.load(f)
                     if isinstance(cargados, dict):
                         self.datos.update(cargados)
+                        if "paginas_vacias" not in self.datos:
+                            self.datos["paginas_vacias"] = {}
             except Exception as e:
                 print(f"[AVISO] Al leer estado ({self.ruta}): {e}")
 
@@ -87,3 +90,48 @@ class SyncState:
                 if f in self.datos["articulos"]:
                     self.datos["articulos"][f]["hash"] = h
         self.guardar()
+
+    def registrar_pagina_vacia(self, titulo: str, nombre_archivo: str, revid: int = 0, accion: str = "omitida"):
+        """
+        Registra una página vacía y la acción realizada sobre ella.
+        Acciones posibles:
+          - 'omitida': se ignora en descargas posteriores mientras no cambie el revid.
+          - 'creada_local': se generó el archivo .md vacío localmente para rellenar.
+          - 'eliminada_remoto': se eliminó del servidor MediaWiki.
+        """
+        if "paginas_vacias" not in self.datos:
+            self.datos["paginas_vacias"] = {}
+        self.datos["paginas_vacias"][titulo] = {
+            "archivo": nombre_archivo,
+            "revid": revid,
+            "accion": accion,
+            "mtime": time.time()
+        }
+
+    def es_pagina_vacia_omitida(self, titulo: str, rev_remota: int) -> bool:
+        """
+        Comprueba si la página está registrada como vacía y omitida.
+        Si la revisión remota es mayor a la registrada, significa que alguien
+        la editó en la wiki, por lo que deja de considerarse omitida.
+        """
+        vacias = self.datos.get("paginas_vacias", {})
+        if titulo in vacias:
+            info = vacias[titulo]
+            if info.get("accion") == "omitida":
+                if rev_remota <= info.get("revid", 0):
+                    return True
+                else:
+                    # Se ha editado en la wiki; eliminamos del registro de vacías
+                    del vacias[titulo]
+                    return False
+        return False
+
+    def obtener_paginas_vacias(self) -> dict:
+        """Devuelve el diccionario de páginas vacías registradas."""
+        return self.datos.get("paginas_vacias", {})
+
+    def eliminar_registro_vacia(self, titulo: str):
+        """Elimina el registro de una página vacía."""
+        if "paginas_vacias" in self.datos and titulo in self.datos["paginas_vacias"]:
+            del self.datos["paginas_vacias"][titulo]
+

@@ -8,6 +8,7 @@ from mw_sync.client import MediaWikiClient
 from mw_sync.downloader import ejecutar_descarga
 from mw_sync.uploader import ejecutar_subida
 from mw_sync.converters.sanitizer import sanear_directorio
+from mw_sync.empty_pages import listar_y_gestionar_paginas_vacias
 from mw_sync.state import SyncState
 
 
@@ -48,7 +49,11 @@ Ejemplos de uso:
     parser.add_argument("--force", "-f", action="store_true",
                         help="Fuerza la descarga o subida completa de todos los elementos.")
     parser.add_argument("--yes", "-y", action="store_true",
-                        help="Responde 'sí' automáticamente a confirmaciones interactivas (ej. forzar resolución de conflicto).")
+                        help="Responde 'sí' automáticamente a confirmaciones interactivas (ej. forzar resolución de conflicto o borrado).")
+    parser.add_argument("--empty-pages", action="store_true",
+                        help="Lista y gestiona las páginas vacías registradas en el estado local (.sync_state.json).")
+    parser.add_argument("--empty-action", choices=["ask", "create-md", "delete-remote", "ignore"], default="ask",
+                        help="Acción ante páginas vacías detectadas: ask (preguntar), create-md (crear .md), delete-remote (borrar de wiki), ignore (omitir).")
 
     # Rendimiento
     parser.add_argument("--threads", "-t", type=int, default=DEFAULT_CONFIG["THREADS"],
@@ -150,7 +155,14 @@ Ejemplos de uso:
             print("Aviso: No se han configurado credenciales de MediaWiki (MW_WIKI_USER / MW_WIKI_PASS).")
             print("La publicación se intentará como usuario anónimo y podría ser rechazada.")
 
-    if args.upload:
+    if args.empty_pages:
+        listar_y_gestionar_paginas_vacias(
+            cliente=cliente,
+            output_dir=args.dir,
+            accion=args.empty_action,
+            auto_confirmar=args.yes
+        )
+    elif args.upload:
         ejecutar_subida(
             cliente=cliente,
             output_dir=args.dir,
@@ -167,7 +179,9 @@ Ejemplos de uso:
             output_dir=args.dir,
             forzar=args.force,
             no_imagenes=args.no_images,
-            max_hilos=args.threads
+            max_hilos=args.threads,
+            empty_action=args.empty_action,
+            auto_confirmar=args.yes
         )
 
 

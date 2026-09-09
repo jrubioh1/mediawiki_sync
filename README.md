@@ -254,6 +254,8 @@ print(wikitext)
 | `--dry-run` | | Simula operaciones sin tocar disco ni hacer cambios remotos | Desactivado |
 | `--force` | `-f` | Fuerza la descarga o publicacion omitiendo verificacion de hashes | Desactivado |
 | `--yes` | `-y` | Responde afirmativamente de forma no interactiva a preguntas | Desactivado |
+| `--empty-pages` | | Lista y gestiona las paginas vacias registradas en el estado local | Desactivado |
+| `--empty-action` | | Accion ante paginas vacias (`ask`, `create-md`, `delete-remote`, `ignore`) | `ask` |
 | `--threads` | `-t` | Numero de hilos para descarga paralela | `8` |
 | `--dir` | `-o` | Directorio local de documentacion | `./wiki_docs` |
 | `--file` | | Ruta de un archivo individual (`.md` o imagen) para subir | `None` |

@@ -1,0 +1,46 @@
+[build-system]
+requires = ["poetry-core>=2.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+[project]
+name = "mediawiki-sync"
+version = "3.1.0"
+description = "Suite nativa en Python para sincronización bidireccional entre MediaWiki y Markdown."
+readme = "README.md"
+requires-python = ">=3.13"
+license = "GPL-3.0-or-later"
+authors = [
+    { name = "jrubioh" }
+]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Intended Audience :: System Administrators",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Documentation",
+    "Topic :: Internet :: WWW/HTTP :: Dynamic Content :: Content Management System",
+    "Topic :: Text Processing :: Markup :: Markdown",
+]
+dependencies = []
+
+[project.optional-dependencies]
+fast-http = [
+    "requests>=2.28.0",
+    "urllib3>=1.26.0",
+]
+
+[project.scripts]
+mediawiki-sync = "mw_sync.cli:main"
+mw-sync = "mw_sync.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/jrubioh1/mediawiki_sync"
+Repository = "https://github.com/jrubioh1/mediawiki_sync.git"
+Issues = "https://github.com/jrubioh1/mediawiki_sync/issues"
+
+[tool.poetry]
+packages = [{ include = "mw_sync" }]

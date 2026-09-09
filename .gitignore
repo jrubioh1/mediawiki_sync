@@ -17,6 +17,8 @@ venv/
 .mw_cache/
 *.conflict.md
 .pytest_cache/
+dist/
+build/
 
 # Documentación descargada de MediaWiki (excluida de Git)
 wiki_docs/

@@ -50,12 +50,13 @@ class TestLiveMediaWikiE2E(unittest.TestCase):
         """Valida que la conexión Action API y el login con tokens de sesión son válidos."""
         user_info = self.client.obtener_informacion_usuario()
         self.assertEqual(user_info.get("name"), self.wiki_user)
-        self.assertIn("user", user_info.get("groups", []))
+        self.assertGreater(user_info.get("id", 0), 0)
+        self.assertTrue(any(g in user_info.get("groups", []) for g in ("sysop", "bureaucrat", "user")))
 
     def test_02_subida_de_articulo_markdown(self):
         """Crea un archivo Markdown local y lo sube con éxito a la MediaWiki viva."""
-        titulo_art = f"Articulo_E2E_{int(time.time())}"
-        f_name = f"{titulo_art}.md"
+        titulo_art = f"Articulo E2E {int(time.time())}"
+        f_name = f"{titulo_art.replace(' ', '_')}.md"
         ruta_md = os.path.join(self.test_dir, f_name)
 
         with open(ruta_md, "w", encoding="utf-8") as f:
@@ -77,7 +78,7 @@ class TestLiveMediaWikiE2E(unittest.TestCase):
     def test_03_descarga_incremental_e_indice(self):
         """Descarga artículos desde la MediaWiki y valida la generación de Markdown y 00_INDICE_MEDIAWIKI.md."""
         # 1. Crear un artículo directamente en la wiki
-        titulo = "Pagina_Descarga_E2E"
+        titulo = f"Pagina Descarga E2E {int(time.time())}"
         res = self.client.editar_pagina(titulo, "Contenido para probar descarga incremental.", resumen="Setup E2E")
         self.assertTrue(res.get("exito"))
 
@@ -86,7 +87,8 @@ class TestLiveMediaWikiE2E(unittest.TestCase):
         ejecutar_descarga(self.client, dir_descarga, empty_action="ignore")
 
         # 3. Comprobar que el archivo .md y el índice se generaron
-        f_esperado = os.path.join(dir_descarga, f"{titulo}.md")
+        f_name = f"{titulo.replace(' ', '_')}.md"
+        f_esperado = os.path.join(dir_descarga, f_name)
         self.assertTrue(os.path.isfile(f_esperado))
 
         ruta_indice = os.path.join(dir_descarga, "00_INDICE_MEDIAWIKI.md")
@@ -97,16 +99,22 @@ class TestLiveMediaWikiE2E(unittest.TestCase):
 
     def test_04_deteccion_de_conflictos(self):
         """Comprueba que una edición externa en el servidor genera copia de seguridad .conflict."""
-        titulo = f"Conflicto_E2E_{int(time.time())}"
+        titulo = f"Conflicto E2E {int(time.time())}"
         # 1. Crear versión inicial en wiki
         res1 = self.client.editar_pagina(titulo, "Versión Original Remota", resumen="Creación inicial")
+        self.assertTrue(res1.get("exito"))
         revid_original = res1.get("newrevid")
 
-        # 2. Crear archivo local asociado a esa revisión
-        f_name = f"{titulo}.md"
+        # 2. Crear archivo local asociado a esa revisión y registrar en estado
+        f_name = f"{titulo.replace(' ', '_')}.md"
         ruta_md = os.path.join(self.test_dir, f_name)
         with open(ruta_md, "w", encoding="utf-8") as f:
             f.write(f"---\ntitulo: \"{titulo}\"\nrevid: {revid_original}\n---\n\n# {titulo}\n\nMi cambio local.\n")
+
+        from mw_sync.state import calcular_sha256
+        estado = SyncState(os.path.join(self.test_dir, ".sync_state.json"))
+        estado.registrar_articulo(f_name, titulo, calcular_sha256(ruta_md), revid_original)
+        estado.guardar()
 
         # 3. Simular que otro usuario edita la página en el servidor (nuevo revid)
         res2 = self.client.editar_pagina(titulo, "Versión Editada por Tercero", resumen="Edición ajena")
@@ -122,11 +130,11 @@ class TestLiveMediaWikiE2E(unittest.TestCase):
 
         # 5. Validar que se creó el archivo de conflicto de respaldo
         archivo_conflicto = f"{ruta_md}.servidor.conflict"
-        self.assertTrue(os.path.isfile(archivo_conflicto), "Debe crearse el archivo .servidor.conflict")
+        self.assertTrue(os.path.isfile(archivo_conflicto), f"Debe crearse el archivo .servidor.conflict en {archivo_conflicto}")
 
     def test_05_gestion_pagina_vacia_crear_plantilla(self):
         """Comprueba que una página vacía en la wiki puede convertirse en plantilla .md local."""
-        titulo_vacia = f"Vacia_Crear_E2E_{int(time.time())}"
+        titulo_vacia = f"Vacia Crear E2E {int(time.time())}"
         # Crear página vacía en el servidor
         res = self.client.editar_pagina(titulo_vacia, "", resumen="Página vacía E2E")
         self.assertTrue(res.get("exito"))
@@ -134,7 +142,8 @@ class TestLiveMediaWikiE2E(unittest.TestCase):
         dir_descarga = os.path.join(self.test_dir, "vacias_create")
         ejecutar_descarga(self.client, dir_descarga, empty_action="create-md")
 
-        ruta_md = os.path.join(dir_descarga, f"{titulo_vacia}.md")
+        f_name = f"{titulo_vacia.replace(' ', '_')}.md"
+        ruta_md = os.path.join(dir_descarga, f_name)
         self.assertTrue(os.path.isfile(ruta_md), "El archivo .md plantilla debe haber sido creado")
         with open(ruta_md, "r", encoding="utf-8") as f:
             contenido = f.read()
@@ -149,20 +158,22 @@ class TestLiveMediaWikiE2E(unittest.TestCase):
 
     def test_06_gestion_pagina_vacia_borrado_remoto(self):
         """Comprueba que una página vacía puede eliminarse directamente del servidor remoto."""
-        titulo_borrar = f"Vacia_Borrar_E2E_{int(time.time())}"
+        titulo_borrar = f"Vacia Borrar E2E {int(time.time())}"
         # Crear página en el servidor
         res = self.client.editar_pagina(titulo_borrar, "", resumen="Página vacía a borrar E2E")
         self.assertTrue(res.get("exito"))
 
         # Validar que existe en la lista de páginas
-        self.assertIn(titulo_borrar, self.client.obtener_lista_paginas())
+        paginas_antes = [p.replace("_", " ") for p in self.client.obtener_lista_paginas()]
+        self.assertIn(titulo_borrar, paginas_antes)
 
         # Ejecutar descarga con acción de borrado remoto automático
         dir_descarga = os.path.join(self.test_dir, "vacias_delete")
         ejecutar_descarga(self.client, dir_descarga, empty_action="delete-remote", auto_confirmar=True)
 
         # Validar que ya no existe en la lista de páginas del servidor
-        self.assertNotIn(titulo_borrar, self.client.obtener_lista_paginas())
+        paginas_despues = [p.replace("_", " ") for p in self.client.obtener_lista_paginas()]
+        self.assertNotIn(titulo_borrar, paginas_despues)
 
 
 if __name__ == "__main__":

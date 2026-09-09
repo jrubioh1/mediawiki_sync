@@ -158,6 +158,14 @@ def ejecutar_subida(cliente: MediaWikiClient, output_dir: str, archivo_especific
             continue
 
         base_rev = estado.obtener_revid(nom_archivo)
+        if not base_rev:
+            meta_front, _ = extraer_metadatos_frontmatter(contenido_md)
+            if "revid" in meta_front:
+                try:
+                    base_rev = int(meta_front["revid"])
+                except (ValueError, TypeError):
+                    base_rev = 0
+
         res = cliente.editar_pagina(titulo, wikitext, resumen=resumen, baserevid=base_rev)
 
         if res.get("exito"):

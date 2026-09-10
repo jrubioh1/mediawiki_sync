@@ -157,5 +157,81 @@ class TestDownloaderNoInfiniteLoopWithCollisions(unittest.TestCase):
         self.assertEqual(state.obtener_revid("Dictámenes_de_la_CIPAE_2026-03-11_1.md"), 101)
 
 
+class TestDescargaArchivosBinarios(unittest.TestCase):
+    def setUp(self):
+        self.tmpdir = tempfile.mkdtemp()
+
+    def tearDown(self):
+        shutil.rmtree(self.tmpdir, ignore_errors=True)
+
+    def test_descarga_binario_normaliza_host_y_reintenta_subdirectorio(self):
+        """Valida que si la wiki está en /mediawiki/api.php y la imagen viene como http://localhost/images/foo.png,
+        el cliente prueba candidates con https y el host de la API, y si /images/ da 404 prueba /mediawiki/images/."""
+        client = MediaWikiClient(
+            url="https://icae.intranet.gc/mediawiki/api.php",
+            http_user="IAE",
+            http_password="secretpassword"
+        )
+
+        urls_solicitadas = []
+
+        class MockResponse:
+            def __init__(self, status_code, content=b""):
+                self.status_code = status_code
+                self.reason = "OK" if status_code == 200 else "Not Found"
+                self._content = content
+
+            def iter_content(self, chunk_size=65536):
+                yield self._content
+
+        def fake_get(url, **kwargs):
+            urls_solicitadas.append(url)
+            # Simular que /images/ da 404 pero /mediawiki/images/ da 200
+            if "/mediawiki/images/" in url:
+                return MockResponse(200, b"fake_png_data")
+            return MockResponse(404)
+
+        client.session.get = fake_get
+
+        destino = os.path.join(self.tmpdir, "images", "foo.png")
+        ok, error = client.descargar_archivo_binario("http://localhost/images/foo.png", destino)
+
+        self.assertTrue(ok)
+        self.assertEqual(error, "")
+        self.assertTrue(os.path.isfile(destino))
+        with open(destino, "rb") as f:
+            self.assertEqual(f.read(), b"fake_png_data")
+
+        # Verificar que se normalizó el host a icae.intranet.gc con https
+        self.assertIn("https://icae.intranet.gc/images/foo.png", urls_solicitadas)
+        self.assertIn("https://icae.intranet.gc/mediawiki/images/foo.png", urls_solicitadas)
+
+    def test_descarga_binario_reporta_error_detallado(self):
+        """Si todos los candidatos fallan, devuelve (False, error detallado con HTTP y URL)."""
+        client = MediaWikiClient(
+            url="https://example.com/api.php",
+            http_user="user",
+            http_password="pass"
+        )
+
+        class MockResponse:
+            def __init__(self, status_code):
+                self.status_code = status_code
+                self.reason = "Forbidden"
+
+            def iter_content(self, chunk_size=65536):
+                yield b""
+
+        client.session.get = lambda url, **kwargs: MockResponse(403)
+
+        destino = os.path.join(self.tmpdir, "images", "bloqueada.png")
+        ok, error = client.descargar_archivo_binario("https://example.com/images/bloqueada.png", destino)
+
+        self.assertFalse(ok)
+        self.assertIn("HTTP 403 (Forbidden)", error)
+        self.assertIn("https://example.com/images/bloqueada.png", error)
+
+
 if __name__ == "__main__":
     unittest.main()
+

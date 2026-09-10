@@ -8,6 +8,7 @@ import ssl
 import json
 import time
 import uuid
+import base64
 import mimetypes
 import urllib.parse
 import urllib.request
@@ -380,39 +381,75 @@ class MediaWikiClient:
         except Exception:
             return None
 
-    def descargar_archivo_binario(self, url: str, ruta_destino: str) -> bool:
-        """Descarga un archivo binario (imagen o documento) en streaming."""
+    def descargar_archivo_binario(self, url: str, ruta_destino: str) -> tuple[bool, str]:
+        """
+        Descarga un archivo binario (imagen o documento) en streaming.
+        Devuelve una tupla (éxito: bool, motivo_o_error: str).
+        """
         try:
-            url_completa = urllib.parse.urljoin(self.base_url, url)
-
-            # Si self.api_url usa https y la url devuelta por MediaWiki usa http en el mismo host,
-            # forzar https para evitar que la redirección elimine las credenciales de Basic Auth
             p_api = urllib.parse.urlparse(self.api_url)
-            p_url = urllib.parse.urlparse(url_completa)
-            if p_api.scheme == "https" and p_url.scheme == "http" and p_api.hostname == p_url.hostname:
-                url_completa = p_url._replace(scheme="https").geturl()
+            p_url = urllib.parse.urlparse(url)
+
+            # Extraer ruta del recurso
+            ruta_recurso = p_url.path if p_url.path else url
+            if not ruta_recurso.startswith("/"):
+                ruta_recurso = "/" + ruta_recurso
+
+            # Directorio del script MediaWiki (ej. /mediawiki si api_url es /mediawiki/api.php)
+            script_dir = os.path.dirname(p_api.path).rstrip("/")
+
+            candidatos_url = []
+
+            # Candidato 1: Mismo scheme y netloc de la API, manteniendo la ruta provista
+            url_1 = urllib.parse.urlunparse((p_api.scheme, p_api.netloc, ruta_recurso, "", p_url.query, ""))
+            candidatos_url.append(url_1)
+
+            # Candidato 2: Si la wiki está bajo un subdirectorio y la ruta no lo incluye (ej: /images vs /mediawiki/images)
+            if script_dir and script_dir != "/" and not ruta_recurso.startswith(script_dir + "/"):
+                ruta_con_script = script_dir + ruta_recurso
+                url_2 = urllib.parse.urlunparse((p_api.scheme, p_api.netloc, ruta_con_script, "", p_url.query, ""))
+                candidatos_url.append(url_2)
+
+            # Si la URL original era completa con otro host/scheme, agregarla como último recurso
+            if p_url.scheme and p_url.netloc and url not in candidatos_url:
+                candidatos_url.append(url)
 
             os.makedirs(os.path.dirname(ruta_destino), exist_ok=True)
 
-            if HAS_REQUESTS:
-                auth = HTTPBasicAuth(self.http_user, self.http_password) if (self.http_user and self.http_password) else None
-                r = self.session.get(url_completa, stream=True, timeout=30.0, auth=auth)
-                if r.status_code == 200:
-                    with open(ruta_destino, "wb") as f:
-                        for chunk in r.iter_content(chunk_size=65536):
-                            if chunk:
-                                f.write(chunk)
-                    return True
-                return False
-            else:
-                req = urllib.request.Request(url_completa, headers={"User-Agent": self.user_agent})
-                with self.opener.open(req, timeout=30.0) as resp:
-                    with open(ruta_destino, "wb") as f:
-                        while chunk := resp.read(65536):
-                            f.write(chunk)
-                return True
-        except Exception:
-            return False
+            headers_req = {"User-Agent": self.user_agent}
+            auth_obj = None
+            if self.http_user and self.http_password:
+                auth_obj = HTTPBasicAuth(self.http_user, self.http_password)
+                raw_token = f"{self.http_user}:{self.http_password}".encode("latin1")
+                headers_req["Authorization"] = f"Basic {base64.b64encode(raw_token).decode('ascii')}"
+
+            ultimo_error = "Sin candidatos de descarga disponibles"
+
+            for u_cand in candidatos_url:
+                try:
+                    if HAS_REQUESTS:
+                        r = self.session.get(u_cand, stream=True, timeout=30.0, auth=auth_obj, headers=headers_req)
+                        if r.status_code == 200:
+                            with open(ruta_destino, "wb") as f:
+                                for chunk in r.iter_content(chunk_size=65536):
+                                    if chunk:
+                                        f.write(chunk)
+                            return True, ""
+                        else:
+                            ultimo_error = f"HTTP {r.status_code} ({r.reason}) en {u_cand}"
+                    else:
+                        req = urllib.request.Request(u_cand, headers=headers_req)
+                        with self.opener.open(req, timeout=30.0) as resp:
+                            with open(ruta_destino, "wb") as f:
+                                while chunk := resp.read(65536):
+                                    f.write(chunk)
+                        return True, ""
+                except Exception as e_cand:
+                    ultimo_error = f"{type(e_cand).__name__}: {e_cand} en {u_cand}"
+
+            return False, ultimo_error
+        except Exception as e:
+            return False, f"Excepción general: {e}"
 
     def editar_pagina(self, titulo: str, wikitext: str, resumen: str, baserevid: int = 0) -> dict:
         """

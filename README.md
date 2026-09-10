@@ -138,7 +138,7 @@ Genera el paquete estándar y lo instala en cualquier entorno Python:
 poetry build
 
 # Instalar el wheel generado:
-pip install dist/mediawiki_sync-1.1.0-py3-none-any.whl
+pip install dist/mediawiki_sync-1.1.1-py3-none-any.whl
 
 # Comandos de terminal disponibles globalmente en el entorno:
 mw-sync --help

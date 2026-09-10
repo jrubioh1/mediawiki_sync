@@ -190,29 +190,36 @@ def ejecutar_descarga(cliente: MediaWikiClient, output_dir: str, forzar: bool = 
 
             def _descargar_una_imagen(it):
                 nom, url, ruta_local, sha1_remoto = it
-                ok = cliente.descargar_archivo_binario(url, ruta_local)
+                ok, motivo = cliente.descargar_archivo_binario(url, ruta_local)
                 if ok and os.path.isfile(ruta_local) and os.path.getsize(ruta_local) > 0:
                     h_sha = calcular_sha256(ruta_local)
                     with lock_estado:
                         estado.registrar_imagen(nom, h_sha, sha1_remoto=sha1_remoto)
-                    return True, nom
-                return False, nom
+                    return True, nom, ""
+                return False, nom, motivo
 
             imgs_descargadas_ok = 0
             imgs_fallos = 0
+            muestras_errores = []
             with ThreadPoolExecutor(max_workers=max_hilos) as img_exec:
                 fut_imgs = [img_exec.submit(_descargar_una_imagen, it) for it in imagenes_pendientes]
                 for idx, f in enumerate(as_completed(fut_imgs), 1):
-                    ok, nom = f.result()
+                    ok, nom, motivo = f.result()
                     if ok:
                         imgs_descargadas_ok += 1
                     else:
                         imgs_fallos += 1
+                        if len(muestras_errores) < 5:
+                            muestras_errores.append((nom, motivo))
                     if idx % 25 == 0 or idx == len(imagenes_pendientes):
                         print(f"  Progreso de imágenes: {idx}/{len(imagenes_pendientes)} ({imgs_descargadas_ok} guardadas)")
 
             if imgs_fallos > 0:
-                print(f"  [AVISO] {imgs_fallos} imágenes no pudieron descargarse (comprobar conectividad o autenticación).")
+                print(f"\n  [AVISO] {imgs_fallos} imágenes no pudieron descargarse.")
+                if muestras_errores:
+                    print("  Detalle de fallos detectados (muestra representativa):")
+                    for nom_err, mot_err in muestras_errores:
+                        print(f"    • Archivo '{nom_err}': {mot_err}")
 
     # 5. Generar / actualizar índice general
     ruta_indice = os.path.join(output_dir, "00_INDICE_MEDIAWIKI.md")

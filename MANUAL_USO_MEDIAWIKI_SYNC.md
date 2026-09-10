@@ -1,5 +1,7 @@
 # Manual de Uso: Sincronizador MediaWiki <-> Markdown (v3.1)
 
+> 🌐 **Language / Idioma:** **Español** | [English](MANUAL_USO_MEDIAWIKI_SYNC.en.md) · **README:** [Español](README.md) | [English](README.en.md)
+
 Herramienta nativa en Python para la sincronización bidireccional entre servidores **MediaWiki** y archivos locales en formato **Markdown (.md)** con soporte multihilo, descarga incremental inteligente, imágenes, control de conflictos y autenticación **HTTP Basic Auth** (sin dependencias externas).
 
 ---
@@ -13,8 +15,9 @@ Herramienta nativa en Python para la sincronización bidireccional entre servido
 6. [Modo 2: Subida y Control de Conflictos (--upload)](#modo-2-subida-y-control-de-conflictos---upload)
 7. [Modo 3: Saneamiento Offline de Archivos (--sanitize)](#modo-3-saneamiento-offline-de-archivos---sanitize)
 8. [Modo 4: Control y Gestión de Páginas Vacías (--empty-pages)](#modo-4-control-y-gestión-de-páginas-vacías---empty-pages)
-9. [Referencia de Parámetros CLI](#referencia-de-parámetros-cli)
-10. [Batería de Pruebas](#batería-de-pruebas)
+9. [Modo 5: Selección de Idioma e Internacionalización (i18n)](#modo-5-selección-de-idioma-e-internacionalización-i18n)
+10. [Referencia de Parámetros CLI](#referencia-de-parámetros-cli)
+11. [Batería de Pruebas](#batería-de-pruebas)
 
 ---
 
@@ -28,9 +31,10 @@ Herramienta nativa en Python para la sincronización bidireccional entre servido
   * Mapea enlaces internos de MediaWiki a archivos locales relativos `./Articulo.md` para lectura offline fluida (Obsidian, VS Code, Typora).
   * Convierte listas anidadas preservando niveles de indentación (`*`, `**`, `***`, `#`, `##`).
 * **Prevención de Conflictos de Edición (`baserevid`):** Durante la subida, comprueba si alguien modificó la página en el servidor para evitar sobreescrituras accidentales. Si hay conflicto, descarga automáticamente una copia de seguridad `<archivo>.servidor.conflict`.
-* **Cero Dependencias Externas:** Funciona exclusivamente con las librerías nativas de Python (`urllib`, `re`, `concurrent.futures`, `json`, `argparse`). No requiere instalar librerías pesadas ni frameworks de terceros.
+* **Cero Dependencias Externas:** Funciona exclusivamente con las librerías nativas de Python (`urllib`, `re`, `concurrent.futures`, `json`, `argparse`, `locale`). No requiere instalar librerías pesadas ni frameworks de terceros.
 * **Empaquetado Moderno con Poetry:** Distribuible como paquete estándar `.whl`, configurable en `pyproject.toml` y con comandos ejecutables en consola (`mw-sync` y `mediawiki-sync`).
 * **Seguridad Reforzada:** Credenciales cargadas automáticamente desde `.env` (ignorado por Git) con solicitud interactiva por consola (`getpass`) si no están configuradas.
+* **Internacionalización Nativa Completa (i18n):** Soporte bilingüe integral (español e inglés) para interfaz de consola, mensajes de progreso, avisos de ayuda (`--help`), preguntas interactivas y manuales. Detecta automáticamente el idioma del sistema y permite forzarlo vía CLI (`--lang` / `-l`) o variable de entorno (`MW_LANG`).
 
 ---
 
@@ -40,8 +44,10 @@ Herramienta nativa en Python para la sincronización bidireccional entre servido
 mediawiki-sync/
 ├── pyproject.toml              # Configuración de paquete Poetry (PEP 621)
 ├── LICENSE                     # Licencia GNU GPL v3
-├── MANUAL_USO_MEDIAWIKI_SYNC.md# Este manual de usuario
-├── README.md                   # Documentación técnica general
+├── MANUAL_USO_MEDIAWIKI_SYNC.md# Este manual de usuario (Español)
+├── MANUAL_USO_MEDIAWIKI_SYNC.en.md # Manual de usuario (English)
+├── README.md                   # Documentación técnica general (Español)
+├── README.en.md                # Documentación técnica general (English)
 ├── .env.example                # Plantilla de variables de entorno
 ├── .env                        # Credenciales locales (IGNORADO POR GIT)
 ├── .gitignore                  # Protección de credenciales, dist/ y temporales
@@ -51,6 +57,7 @@ mediawiki-sync/
 ├── mw_sync/                    # Paquete modular nativo
 │   ├── __init__.py             # Exportación pública y versión
 │   ├── __main__.py             # Punto de entrada modular (python3 -m mw_sync)
+│   ├── i18n.py                 # Motor de internacionalización y catálogos bilingües
 │   ├── config.py               # Cargador de .env y opciones por defecto
 │   ├── client.py               # Cliente MediaWiki Action API (reintentos, tokens, borrado)
 │   ├── state.py                # Gestión de .sync_state.json y hashes SHA-256
@@ -66,6 +73,7 @@ mediawiki-sync/
 │   ├── test_converters.py      # Pruebas unitarias de conversión
 │   ├── test_uploader.py        # Pruebas unitarias de subida y conflictos
 │   ├── test_empty_pages.py     # Pruebas de control de páginas vacías y borrado
+│   ├── test_i18n.py            # Pruebas unitarias de internacionalización
 │   └── test_live_wiki.py       # Pruebas E2E en vivo con servidor MediaWiki Docker
 └── wiki_docs/                  # Directorio local de documentación (ignorado en Git)
     ├── .sync_state.json        # Registro de hashes y revision IDs
@@ -102,7 +110,7 @@ El sincronizador se ejecuta mediante cualquiera de las siguientes modalidades:
 
 El orden de prioridad para resolver cualquier parámetro (de mayor a menor relevancia) es:
 
-1. **Parámetros pasados por CLI:** Argumentos como `--url`, `--threads 16` u `--wiki-user` sobrescriben cualquier otra fuente.
+1. **Parámetros pasados por CLI:** Argumentos como `--url`, `--threads 16`, `--lang en` u `--wiki-user` sobrescriben cualquier otra fuente.
 2. **Variables de Entorno de Sistema / Producción:** Variables definidas en el entorno (`export MW_URL=...`, Docker `ENV`, GitHub Secrets, Kubernetes).
 3. **Archivo `.env` Local:** Valores cargados desde `.env` en el directorio de trabajo (sin sobrescribir variables ya presentes en el sistema).
 4. **Valores Predeterminados:** Valores por defecto integrados en el módulo de configuración.
@@ -375,6 +383,7 @@ wiki_plana/
 | `MW_USER_AGENT` | Cabecera `User-Agent` de red enviada a la API | `MediaWikiSync/3.0 (Python; BiDirectional)` |
 | `MW_OUTPUT_DIR` | Directorio local donde se guardan los archivos Markdown e imágenes (relativo a `.env` si es relativo) | `./wiki_docs` |
 | `MW_THREADS` | Hilos de ejecución concurrentes para descarga paralela | `8` |
+| `MW_LANG` | Idioma de la interfaz y mensajes en consola (`es` / `en`) | `es` (o locale del sistema) |
 | `MW_EDIT_SUMMARY` | Resumen predeterminado al publicar revisiones en la wiki | `Actualizado desde local Markdown vía mediawiki_sync` |
 | `MW_TEST_LIVE` | *(Pruebas)* Habilita ejecución de tests E2E contra MediaWiki real (`1`/`0`) | `0` |
 | `MW_TEST_LIVE_URL` | *(Pruebas)* Endpoint de MediaWiki para tests E2E | `http://localhost:8080/api.php` |
@@ -394,6 +403,7 @@ MW_TIMEOUT=12.0
 MW_USER_AGENT=MiDocumentacionBot/1.0
 MW_OUTPUT_DIR=./documentacion_local
 MW_THREADS=8
+MW_LANG=es
 MW_EDIT_SUMMARY=Actualización automática vía CI/CD
 ```
 
@@ -494,10 +504,70 @@ mw-sync --empty-action ignore
 
 ---
 
+## Modo 5: Selección de Idioma e Internacionalización (i18n)
+
+MediaWiki Sync incluye un motor de internacionalización nativo desarrollado íntegramente sobre la biblioteca estándar de Python (sin dependencias externas como Babel o Gettext). Proporciona soporte bilingüe integral en **español** (`es`) e **inglés** (`en`).
+
+### 1. Resolución y Prioridad de Idioma
+
+El sistema resuelve el idioma evaluando la siguiente jerarquía (de mayor a menor prioridad):
+
+1. **Parámetro explícito de línea de comandos:** `--lang <es|en>` o `-l <es|en>`.
+2. **Variable de entorno o archivo `.env`:** `MW_LANG=<es|en>`.
+3. **Autodetección del sistema operativo:** Variables `LC_ALL`, `LC_MESSAGES`, `LANG` o `locale.getlocale()`. Si el sistema está configurado en inglés, adoptará automáticamente `en`.
+4. **Valor por defecto de respaldo:** Español (`es`).
+
+### 2. Ayuda de Consola Bilingüe (--help)
+
+La detección del idioma se realiza de forma anticipada antes de procesar el resto de argumentos. Esto permite consultar la ayuda en inglés o español según se requiera:
+
+```bash
+# Consultar la ayuda completa en inglés:
+mw-sync --lang en --help
+# O de forma abreviada:
+mw-sync -l en -h
+
+# Consultar la ayuda completa en español:
+mw-sync --lang es --help
+```
+
+### 3. Ejecución de Comandos con Interfaz en Inglés
+
+Cualquier modo de trabajo (`--download`, `--upload`, `--sanitize`, etc.) puede ejecutarse en inglés:
+
+```bash
+# Descarga incremental en inglés:
+mw-sync --lang en
+
+# Subida con previsualización diff en inglés:
+mw-sync --upload --diff --lang en
+
+# Saneamiento offline con avisos en inglés:
+mw-sync --sanitize --lang en
+```
+
+### 4. Preguntas Interactivas Bilingües
+
+Cuando una operación solicita confirmación interactiva por consola (por ejemplo, resolución de conflictos de subida o borrado de páginas vacías), el intérprete de respuestas acepta afirmaciones en ambos idiomas:
+* **Afirmativo:** `s`, `si`, `sí`, `y`, `yes` (insensible a mayúsculas/minúsculas).
+* **Negativo / Cancelar:** `n`, `no`, o pulsar `Enter` directamente para tomar la opción por defecto.
+
+### 5. Configuración Permanente en `.env`
+
+Para trabajar siempre en inglés sin tener que especificar `--lang en` en cada comando, añada al archivo `.env` de su proyecto:
+
+```ini
+# Idioma de la interfaz (es = español, en = inglés)
+MW_LANG=en
+```
+
+---
+
 ## Referencia de Parámetros CLI
 
 | Parámetro | Abreviatura | Variable Mapeada (`MW_*`) | Descripción | Valor por defecto |
 | :--- | :--- | :--- | :--- | :--- |
+| `--lang` | `-l` | `MW_LANG` | Idioma de la interfaz y mensajes (`es` / `en`) | `es` (o locale del sistema) |
 | `--download` | `-dl` | N/A | Modo descarga incremental (servidor -> local) | Activo por defecto |
 | `--upload` | `-up` | N/A | Modo subida de cambios (local -> servidor) | Falso |
 | `--sanitize` | | N/A | Limpia y sanea archivos Markdown locales | Falso |
@@ -532,12 +602,13 @@ Para validar los conversores, el sistema de empaquetado y la integridad general:
 python3 -m unittest discover tests
 
 # O mediante Poetry:
-poetry run pytest tests
+poetry run python -m unittest discover tests
 ```
 
 ### Cobertura de la Suite:
 - `tests/test_converters.py`: Conversiones bidireccionales HTML/Markdown/Wikitext, tablas, enlaces y anidación de listas.
 - `tests/test_uploader.py`: Extracción de metadatos, detección de conflictos `baserevid` y respaldo automático.
 - `tests/test_empty_pages.py`: Detección de páginas vacías, plantillas locales y acción de borrado remoto.
+- `tests/test_i18n.py`: Motor de internacionalización (paridad de catálogos ES/EN, resolución de precedencia, parsing booleano).
 - `tests/test_live_wiki.py`: Pruebas de integración E2E en vivo contra contenedor Docker con MediaWiki real.
 

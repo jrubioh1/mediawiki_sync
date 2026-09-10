@@ -20,8 +20,9 @@ from mw_sync.converters.html_to_md import html_a_markdown, sanitizar_nombre_arch
 from mw_sync.converters.md_to_wikitext import markdown_a_wikitext
 from mw_sync.converters.sanitizer import sanear_directorio, limpiar_contenido_markdown
 from mw_sync.empty_pages import gestionar_paginas_vacias, listar_y_gestionar_paginas_vacias
+from mw_sync.i18n import t, _, set_language, get_language, init_language
 
-__version__ = "1.1.2"
+__version__ = "1.2.0"
 
 __all__ = [
     "MediaWikiClient",
@@ -39,5 +40,10 @@ __all__ = [
     "limpiar_contenido_markdown",
     "gestionar_paginas_vacias",
     "listar_y_gestionar_paginas_vacias",
+    "t",
+    "_",
+    "set_language",
+    "get_language",
+    "init_language",
 ]
 

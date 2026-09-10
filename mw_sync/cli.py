@@ -10,90 +10,102 @@ from mw_sync.uploader import ejecutar_subida
 from mw_sync.converters.sanitizer import sanear_directorio
 from mw_sync.empty_pages import listar_y_gestionar_paginas_vacias
 from mw_sync.state import SyncState
+from mw_sync.i18n import _, init_language, set_language, get_language
+from mw_sync import __version__
 
 
 def main(argv=None):
+    raw_args = argv if argv is not None else sys.argv[1:]
+
+    # Detección temprana de idioma para --help y mensajes CLI
+    cli_lang = None
+    for i, a in enumerate(raw_args):
+        if a.startswith("--lang="):
+            cli_lang = a.split("=", 1)[1]
+            break
+        elif a in ("--lang", "-l") and i + 1 < len(raw_args):
+            cli_lang = raw_args[i + 1]
+            break
+        elif a.startswith("-l="):
+            cli_lang = a.split("=", 1)[1]
+            break
+
+    init_language(cli_lang or DEFAULT_CONFIG.get("LANG"))
+
     parser = argparse.ArgumentParser(
-        description="Sincronizador integral MediaWiki <-> Markdown nativo en Python, multihilo e incremental.",
+        description=_("cli_desc"),
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-Ejemplos de uso:
-  # 1. Sincronización incremental (descarga solo lo nuevo/modificado con 8 hilos):
-  mw-sync
-
-  # 2. Sanear y limpiar los archivos Markdown existentes (quita [editar], TOC y ****):
-  mw-sync --sanitize
-
-  # 3. Previsualizar qué se subiría a la wiki con diff:
-  mw-sync --upload --diff --dry-run
-
-  # 4. Subir cambios locales a la MediaWiki:
-  mw-sync --upload
-
-  # 5. Subir un artículo o imagen específico:
-  mw-sync --upload --file ./wiki_docs/Manual_Usuario.md
-        """
+        epilog=_("cli_epilog")
     )
+
+    # Versión e Idioma
+    parser.add_argument("--version", "-V", action="version",
+                        version=f"%(prog)s {__version__}",
+                        help=_("help_version"))
+    parser.add_argument("--lang", "-l", choices=["es", "en"], default=get_language(),
+                        help=_("help_lang"))
 
     # Modos principales
     parser.add_argument("--download", "-dl", action="store_true",
-                        help="Modo descarga incremental (por defecto): Sincroniza desde MediaWiki a Markdown.")
+                        help=_("help_download"))
     parser.add_argument("--upload", "-up", action="store_true",
-                        help="Modo subida: Publica en MediaWiki los cambios o nuevos artículos locales.")
+                        help=_("help_upload"))
     parser.add_argument("--sanitize", action="store_true",
-                        help="Sanea todos los archivos .md locales eliminando [editar], TOC y artefactos rotos.")
+                        help=_("help_sanitize"))
     parser.add_argument("--diff", action="store_true",
-                        help="Muestra previsualización de diferencias de Wikitext antes de subir.")
+                        help=_("help_diff"))
     parser.add_argument("--dry-run", action="store_true",
-                        help="Simula la operación sin escribir en disco ni modificar el servidor.")
+                        help=_("help_dry_run"))
     parser.add_argument("--force", "-f", action="store_true",
-                        help="Fuerza la descarga o subida completa de todos los elementos.")
+                        help=_("help_force"))
     parser.add_argument("--yes", "-y", action="store_true",
-                        help="Responde 'sí' automáticamente a confirmaciones interactivas (ej. forzar resolución de conflicto o borrado).")
+                        help=_("help_yes"))
     parser.add_argument("--empty-pages", action="store_true",
-                        help="Lista y gestiona las páginas vacías registradas en el estado local (.sync_state.json).")
+                        help=_("help_empty_pages"))
     parser.add_argument("--empty-action", choices=["ask", "create-md", "delete-remote", "ignore"], default="ask",
-                        help="Acción ante páginas vacías detectadas: ask (preguntar), create-md (crear .md), delete-remote (borrar de wiki), ignore (omitir).")
+                        help=_("help_empty_action"))
 
     # Rendimiento
     parser.add_argument("--threads", "-t", type=int, default=DEFAULT_CONFIG["THREADS"],
-                        help=f"Número de hilos concurrentes para descarga (por defecto: {DEFAULT_CONFIG['THREADS']})")
+                        help=_("help_threads", threads=DEFAULT_CONFIG['THREADS']))
 
     # Parámetros de red y autenticación
     parser.add_argument("--url", default=DEFAULT_CONFIG["MEDIAWIKI_URL"],
-                        help="Endpoint api.php de la MediaWiki (por defecto: valor de MW_URL o https://wiki.example.com/api.php).")
+                        help=_("help_url"))
     parser.add_argument("--user", "-u", default=DEFAULT_CONFIG["AUTH_USER"],
-                        help="Usuario para HTTP Basic Auth / MediaWiki (legado).")
+                        help=_("help_user"))
     parser.add_argument("--password", "-p", default=DEFAULT_CONFIG["AUTH_PASS"],
-                        help="Contraseña para HTTP Basic Auth / MediaWiki (legado).")
+                        help=_("help_password"))
     parser.add_argument("--http-user", default=DEFAULT_CONFIG["HTTP_USER"],
-                        help="Usuario para autenticación Apache / HTTP Basic Auth.")
+                        help=_("help_http_user"))
     parser.add_argument("--http-password", default=DEFAULT_CONFIG["HTTP_PASS"],
-                        help="Contraseña para autenticación Apache / HTTP Basic Auth.")
+                        help=_("help_http_password"))
     parser.add_argument("--wiki-user", default=DEFAULT_CONFIG["WIKI_USER"],
-                        help="Usuario de la MediaWiki (Action API).")
+                        help=_("help_wiki_user"))
     parser.add_argument("--wiki-password", default=DEFAULT_CONFIG["WIKI_PASS"],
-                        help="Contraseña de la MediaWiki.")
+                        help=_("help_wiki_password"))
     parser.add_argument("--verify-ssl", action="store_true", default=DEFAULT_CONFIG["VERIFY_SSL"],
-                        help="Activa verificación estricta de certificados SSL.")
+                        help=_("help_verify_ssl"))
     parser.add_argument("--ca-bundle", default=DEFAULT_CONFIG["CA_BUNDLE"],
-                        help="Ruta al archivo CA Bundle (.crt/.pem) para validar SSL de forma segura.")
+                        help=_("help_ca_bundle"))
 
     # Carpetas y ficheros
     parser.add_argument("--dir", "-o", default=DEFAULT_CONFIG["OUTPUT_DIR"],
-                        help=f"Directorio local de documentación (por defecto: {DEFAULT_CONFIG['OUTPUT_DIR']})")
-    parser.add_argument("--file", help="Especifica un único archivo .md o multimedia para subir.")
+                        help=_("help_dir", output_dir=DEFAULT_CONFIG['OUTPUT_DIR']))
+    parser.add_argument("--file", help=_("help_file"))
     parser.add_argument("--no-images", action="store_true",
-                        help="Ignora la sincronización de archivos multimedia.")
+                        help=_("help_no_images"))
     parser.add_argument("--include-redirects", action="store_true",
-                        help="Incluye páginas de redirección de MediaWiki en la sincronización (por defecto se omiten).")
+                        help=_("help_include_redirects"))
     parser.add_argument("--summary", default=DEFAULT_CONFIG["EDIT_SUMMARY"],
-                        help="Mensaje de resumen para el historial de revisiones de MediaWiki.")
+                        help=_("help_summary"))
 
     args = parser.parse_args(argv)
 
+    if args.lang:
+        set_language(args.lang)
+
     # Resolver directorio de documentación y autodescubrir .env
-    raw_args = argv if argv is not None else sys.argv[1:]
     dir_explicit = any(
         a.startswith("--dir") or a == "-o" or a.startswith("-o=") or a.startswith("--dir=")
         for a in raw_args
@@ -107,6 +119,11 @@ Ejemplos de uso:
         dir_resuelto = actualizar_config_desde_directorio(None)
         if dir_resuelto:
             args.dir = dir_resuelto
+
+    # Si se detectó MW_LANG en el .env y no se pasó explícito en raw_args, sincronizar
+    if not any(a.startswith("--lang") or a == "-l" or a.startswith("-l=") or a.startswith("--lang=") for a in raw_args):
+        if DEFAULT_CONFIG.get("LANG"):
+            set_language(DEFAULT_CONFIG["LANG"])
 
     # Actualizar argumentos si no se proporcionaron explícitamente por CLI
     if not any(a.startswith("--url") for a in raw_args):
@@ -132,15 +149,14 @@ Ejemplos de uso:
     if not any(a.startswith("--summary") for a in raw_args):
         args.summary = DEFAULT_CONFIG["EDIT_SUMMARY"]
 
-
     # Si se solicita modo saneamiento
     if args.sanitize:
         tot, mod = sanear_directorio(args.dir, dry_run=args.dry_run)
         if mod > 0 and not args.dry_run:
-            print("Actualizando registro de hashes en .sync_state.json...")
+            print(_("updating_hashes"))
             st = SyncState(f"{args.dir}/.sync_state.json")
             st.sincronizar_hashes_locales(args.dir)
-            print("Hashes actualizados.")
+            print(_("hashes_updated"))
         return
 
     # Solicitar credenciales interactivamente si no están configuradas ni en .env (solo en operaciones reales online)
@@ -168,35 +184,33 @@ Ejemplos de uso:
     )
 
     print("=" * 75)
-    print("MEDIAWIKI SYNC 3.0 (Markdown <-> Wikitext)")
-    print(f"Servidor:     {args.url}")
-    print(f"Usuario Web:  {http_user if http_user else '(ninguno)'}")
-    print(f"Usuario Wiki: {wiki_user if wiki_user else '(anónimo)'}")
+    print(_("cli_header"))
+    print(_("cli_server", url=args.url))
+    print(_("cli_web_user", user=http_user if http_user else _("none")))
+    print(_("cli_wiki_user", user=wiki_user if wiki_user else _("anonymous")))
     print("=" * 75)
 
     if args.dry_run:
-        print("Modo simulación (--dry-run) activo: Ejecución segura offline sin llamadas de red.")
+        print(_("dry_run_notice"))
     else:
         ok, sitename = cliente.test_conexion()
         if not ok:
-            print(f"Error de conexión al servidor: {sitename}")
-            print("Comprueba la URL del endpoint, credenciales en .env o el acceso por red.")
+            print(_("conn_error", sitename=sitename))
             sys.exit(1)
-        print(f"Conexión establecida con éxito a '{sitename}'")
+        print(_("conn_success", sitename=sitename))
 
         # Intentar inicio de sesión en MediaWiki si se proporcionan credenciales
         if wiki_user and wiki_pass:
             ok_login, msg_login = cliente.login()
             if not ok_login:
-                print(f"Error de autenticación en MediaWiki: {msg_login}")
+                print(_("auth_error", msg=msg_login))
                 if args.upload:
-                    print("Operación cancelada: No se puede publicar contenido sin iniciar sesión en MediaWiki.")
+                    print(_("upload_cancelled_no_auth"))
                     sys.exit(1)
             else:
                 print(f"{msg_login}")
         elif args.upload:
-            print("Aviso: No se han configurado credenciales de MediaWiki (MW_WIKI_USER / MW_WIKI_PASS).")
-            print("La publicación se intentará como usuario anónimo y podría ser rechazada.")
+            print(_("anon_upload_warning"))
 
     if args.empty_pages:
         listar_y_gestionar_paginas_vacias(

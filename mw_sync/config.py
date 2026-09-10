@@ -9,6 +9,9 @@ import getpass
 from pathlib import Path
 
 
+from mw_sync.i18n import _, set_language
+
+
 def cargar_env(ruta_env: str = ".env", sobrescribir: bool = False) -> dict:
     """Lee un archivo .env si existe y carga sus valores en os.environ."""
     env_vars = {}
@@ -33,7 +36,7 @@ def cargar_env(ruta_env: str = ".env", sobrescribir: bool = False) -> dict:
                     if sobrescribir or clave not in os.environ:
                         os.environ[clave] = valor
     except Exception as e:
-        print(f"[AVISO] Al leer {ruta_env}: {e}", file=sys.stderr)
+        print(_("env_read_warning", path=ruta_env, err=e), file=sys.stderr)
 
     return env_vars
 
@@ -86,6 +89,9 @@ def actualizar_config_desde_directorio(dir_path: str = None) -> str:
         DEFAULT_CONFIG["USER_AGENT"] = os.getenv("MW_USER_AGENT", "MediaWikiSync/3.0 (Python; BiDirectional)")
         DEFAULT_CONFIG["EDIT_SUMMARY"] = os.getenv("MW_EDIT_SUMMARY", "Actualizado desde local Markdown vía mediawiki_sync")
         DEFAULT_CONFIG["INCLUDE_REDIRECTS"] = os.getenv("MW_INCLUDE_REDIRECTS", "false").lower() in ("true", "1", "yes")
+        DEFAULT_CONFIG["LANG"] = os.getenv("MW_LANG", "")
+        if DEFAULT_CONFIG["LANG"]:
+            set_language(DEFAULT_CONFIG["LANG"])
 
     # Determinar el directorio de documentación efectivo
     if env_file:
@@ -155,7 +161,8 @@ DEFAULT_CONFIG = {
     "THREADS": int(os.getenv("MW_THREADS", "8")),
     "USER_AGENT": os.getenv("MW_USER_AGENT", "MediaWikiSync/3.0 (Python; BiDirectional)"),
     "EDIT_SUMMARY": os.getenv("MW_EDIT_SUMMARY", "Actualizado desde local Markdown vía mediawiki_sync"),
-    "INCLUDE_REDIRECTS": os.getenv("MW_INCLUDE_REDIRECTS", "false").lower() in ("true", "1", "yes")
+    "INCLUDE_REDIRECTS": os.getenv("MW_INCLUDE_REDIRECTS", "false").lower() in ("true", "1", "yes"),
+    "LANG": os.getenv("MW_LANG", "")
 }
 
 

@@ -9,6 +9,7 @@ import urllib.parse
 from datetime import datetime
 from mw_sync.client import MediaWikiClient
 from mw_sync.state import SyncState, calcular_sha256
+from mw_sync.i18n import _, parse_bool_response
 
 
 def crear_plantilla_md_vacia(cliente: MediaWikiClient, estado: SyncState,
@@ -42,11 +43,12 @@ def crear_plantilla_md_vacia(cliente: MediaWikiClient, estado: SyncState,
 
 def eliminar_pagina_remota(cliente: MediaWikiClient, estado: SyncState,
                            titulo: str, nombre_archivo: str, ruta_archivo: str,
-                           revid: int) -> tuple[bool, str]:
+                           revid: int, motivo: str = None) -> tuple[bool, str]:
     """
     Elimina una página en el servidor remoto y actualiza el registro local.
     """
-    res = cliente.eliminar_pagina(titulo, motivo="Página vacía eliminada por mediawiki_sync")
+    motivo_efectivo = motivo if motivo is not None else _("empty_page_delete_reason")
+    res = cliente.eliminar_pagina(titulo, motivo=motivo_efectivo)
     if res.get("exito"):
         estado.registrar_pagina_vacia(titulo, nombre_archivo, revid, accion="eliminada_remoto")
         if os.path.isfile(ruta_archivo):
@@ -54,7 +56,7 @@ def eliminar_pagina_remota(cliente: MediaWikiClient, estado: SyncState,
                 os.remove(ruta_archivo)
             except OSError:
                 pass
-        return True, "Eliminada con éxito del servidor remoto."
+        return True, _("empty_deleted_remote_ok")
     else:
         err = res.get("error", "Error desconocido")
         estado.registrar_pagina_vacia(titulo, nombre_archivo, revid, accion="omitida")
@@ -83,23 +85,23 @@ def gestionar_paginas_vacias(cliente: MediaWikiClient, estado: SyncState,
     sel = accion.lower().strip()
     if sel == "ask":
         if not sys.stdin.isatty():
-            print("\n[AVISO] Ejecución no interactiva detectada. Las páginas vacías se registrarán como omitidas.")
+            print(_("empty_non_interactive_notice"))
             sel = "ignore"
         else:
             print("\n" + "=" * 75)
-            print("CONTROL DE PÁGINAS VACÍAS DETECTADAS")
+            print(_("empty_banner"))
             print("=" * 75)
-            print(f"Se han detectado {len(paginas_vacias)} página(s) sin contenido en la MediaWiki:")
-            for t, f_name, _, rev in paginas_vacias:
+            print(_("empty_detected_count", count=len(paginas_vacias)))
+            for t, f_name, _path, rev in paginas_vacias:
                 print(f"   • {t} (revid: {rev})")
 
-            print("\n¿Qué acción deseas realizar?")
-            print("   [1] Crear archivos .md locales (plantilla vacía con metadatos para rellenar)")
-            print("   [2] Eliminar las páginas del servidor remoto MediaWiki (action=delete)")
-            print("   [3] Omitir / Ignorar por ahora (no descargar ni volver a reportar error)")
+            print(_("empty_menu_title"))
+            print(_("empty_menu_opt1"))
+            print(_("empty_menu_opt2"))
+            print(_("empty_menu_opt3"))
 
             try:
-                resp = input("\nSelecciona una opción [1/2/3] (por defecto 3): ").strip()
+                resp = input(_("empty_prompt_option")).strip()
             except (EOFError, KeyboardInterrupt):
                 resp = "3"
 
@@ -111,39 +113,39 @@ def gestionar_paginas_vacias(cliente: MediaWikiClient, estado: SyncState,
                 sel = "ignore"
 
     if sel in ("1", "create-md", "create"):
-        print(f"\nCreando plantillas Markdown locales para {len(paginas_vacias)} páginas...")
+        print(_("empty_creating_templates", count=len(paginas_vacias)))
         for t, f_name, ruta_f, rev in paginas_vacias:
             tam = crear_plantilla_md_vacia(cliente, estado, t, f_name, ruta_f, rev)
             if articulos_actualizados_locales is not None:
                 articulos_actualizados_locales.append((t, f_name, tam))
-            print(f"   [CREADO] '{f_name}' listo para rellenar ({tam} bytes).")
+            print(_("empty_template_created", file=f_name, bytes=tam))
 
     elif sel in ("2", "delete-remote", "delete"):
         if not auto_confirmar and sys.stdin.isatty():
             try:
-                conf = input(f"\n¿Confirmas que deseas ELIMINAR {len(paginas_vacias)} página(s) en la MediaWiki? (s/N): ").strip().lower()
+                conf = input(_("empty_prompt_confirm_delete", count=len(paginas_vacias))).strip()
             except (EOFError, KeyboardInterrupt):
                 conf = "n"
 
-            if conf not in ("s", "si", "sí", "y", "yes"):
-                print("   Operación de borrado cancelada. Las páginas quedan registradas como omitidas.")
-                for t, f_name, _, rev in paginas_vacias:
+            if parse_bool_response(conf) is not True:
+                print(_("empty_delete_cancelled"))
+                for t, f_name, _path, rev in paginas_vacias:
                     omitir_pagina_vacia(estado, t, f_name, rev)
                 return
 
-        print(f"\nEliminando {len(paginas_vacias)} página(s) del servidor MediaWiki...")
+        print(_("empty_deleting_remote", count=len(paginas_vacias)))
         for t, f_name, ruta_f, rev in paginas_vacias:
             ok, msg = eliminar_pagina_remota(cliente, estado, t, f_name, ruta_f, rev)
             if ok:
-                print(f"   [BORRADO REMOTO] '{t}': {msg}")
+                print(_("empty_remote_deleted_ok", title=t, msg=msg))
             else:
-                print(f"   [ERROR AL BORRAR] '{t}': {msg}")
+                print(_("empty_remote_delete_error", title=t, msg=msg))
 
     else:  # "3", "ignore", "omitir"
-        print(f"\nRegistrando {len(paginas_vacias)} página(s) como omitidas...")
-        for t, f_name, _, rev in paginas_vacias:
+        print(_("empty_recording_skipped", count=len(paginas_vacias)))
+        for t, f_name, _path, rev in paginas_vacias:
             omitir_pagina_vacia(estado, t, f_name, rev)
-            print(f"   [OMITIDA] '{t}' registrada como omitida (se ignorará en futuras descargas).")
+            print(_("empty_recorded_skipped", title=t))
 
 
 def listar_y_gestionar_paginas_vacias(cliente: MediaWikiClient, output_dir: str,
@@ -156,16 +158,20 @@ def listar_y_gestionar_paginas_vacias(cliente: MediaWikiClient, output_dir: str,
     vacias = estado.obtener_paginas_vacias()
 
     print("\n" + "=" * 75)
-    print("REGISTRO DE PÁGINAS VACÍAS LOCAL (.sync_state.json)")
-    print(f"Directorio: {os.path.abspath(output_dir)}")
+    print(_("empty_registry_banner"))
+    print(_("empty_directory", dir=os.path.abspath(output_dir)))
     print("=" * 75)
 
     if not vacias:
-        print("\nNo hay ninguna página vacía registrada en el estado local.")
+        print(_("empty_none_registered"))
         return
 
-    print(f"\nTotal de páginas vacías registradas: {len(vacias)}\n")
-    print(f"{'Título':<40} {'Archivo':<30} {'Estado':<15} {'Revid':<8}")
+    print(_("empty_total_registered", count=len(vacias)))
+    th_title = _("empty_th_title")
+    th_file = _("empty_th_file")
+    th_status = _("empty_th_status")
+    th_revid = _("empty_th_revid")
+    print(f"{th_title:<40} {th_file:<30} {th_status:<15} {th_revid:<8}")
     print("-" * 95)
     for t, info in sorted(vacias.items(), key=lambda x: x[0].lower()):
         f_name = info.get("archivo", "")
@@ -181,7 +187,7 @@ def listar_y_gestionar_paginas_vacias(cliente: MediaWikiClient, output_dir: str,
     ]
 
     if candidatas:
-        print(f"\nHay {len(candidatas)} página(s) con estado 'omitida'.")
+        print(_("empty_count_skipped", count=len(candidatas)))
         gestionar_paginas_vacias(
             cliente=cliente,
             estado=estado,
@@ -192,4 +198,4 @@ def listar_y_gestionar_paginas_vacias(cliente: MediaWikiClient, output_dir: str,
         )
         estado.guardar()
     else:
-        print("\nNo hay páginas omitidas pendientes de acción.")
+        print(_("empty_none_pending"))

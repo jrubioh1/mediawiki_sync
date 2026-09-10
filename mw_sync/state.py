@@ -6,6 +6,7 @@ import json
 import time
 import hashlib
 from datetime import datetime
+from mw_sync.i18n import _
 
 
 def calcular_sha256(ruta_archivo: str) -> str:
@@ -44,7 +45,7 @@ class SyncState:
                         if "paginas_vacias" not in self.datos:
                             self.datos["paginas_vacias"] = {}
             except Exception as e:
-                print(f"[AVISO] Al leer estado ({self.ruta}): {e}")
+                print(_("state_read_error", path=self.ruta, err=e))
 
     def guardar(self):
         self.datos["ultima_sincronizacion"] = datetime.now().isoformat()
@@ -55,7 +56,7 @@ class SyncState:
                 json.dump(self.datos, f, indent=2, ensure_ascii=False)
             os.replace(temp_file, self.ruta)
         except Exception as e:
-            print(f"[AVISO] No se pudo guardar el archivo de estado: {e}")
+            print(_("state_save_error", err=e))
 
     def registrar_articulo(self, nombre_archivo: str, titulo: str, hash_sha256: str, revid: int = 0):
         self.datos["articulos"][nombre_archivo] = {

@@ -15,6 +15,7 @@ import urllib.request
 import urllib.error
 import http.cookiejar
 from mw_sync.config import EXTENSIONES_MULTIMEDIA, DEFAULT_CONFIG
+from mw_sync.i18n import _
 
 try:
     import requests
@@ -248,7 +249,7 @@ class MediaWikiClient:
         try:
             data = self._api_get({"action": "query", "prop": "info", "intoken": "edit", "titles": "Main_Page"})
             pages = data.get("query", {}).get("pages", {})
-            for _, pinfo in pages.items():
+            for _pid, pinfo in pages.items():
                 tok = pinfo.get("edittoken")
                 if tok:
                     self._csrf_token = tok
@@ -278,7 +279,7 @@ class MediaWikiClient:
             try:
                 data = self._api_get(params)
             except Exception as e:
-                print(f"[AVISO] Error al obtener artículos: {e}")
+                print(_("client_error_get_articles", err=e))
                 break
 
             paginas = data.get("query", {}).get("allpages", [])
@@ -313,7 +314,7 @@ class MediaWikiClient:
                     "titles": pipe_titulos
                 })
                 pages = data.get("query", {}).get("pages", {})
-                for _, pinfo in pages.items():
+                for _pid, pinfo in pages.items():
                     t = pinfo.get("title")
                     revs = pinfo.get("revisions", [])
                     if t and revs:
@@ -323,7 +324,7 @@ class MediaWikiClient:
                             "timestamp": rev_actual.get("timestamp", "")
                         }
             except Exception as e:
-                print(f"[AVISO] Error consultando lote de revisiones: {e}")
+                print(_("client_error_batch_revs", err=e))
 
         return resultado
 
@@ -360,7 +361,7 @@ class MediaWikiClient:
                 else:
                     break
             except Exception as e:
-                print(f"[AVISO] Error consultando catálogo de imágenes: {e}")
+                print(_("client_error_image_catalog", err=e))
                 break
 
         return imagenes
@@ -535,7 +536,7 @@ class MediaWikiClient:
     def subir_archivo(self, nombre_archivo: str, ruta_local: str, comentario: str) -> dict:
         """Sube o actualiza un archivo multimedia en la MediaWiki."""
         token = self.obtener_token_csrf()
-        mime_type, _ = mimetypes.guess_type(ruta_local)
+        mime_type, _encoding = mimetypes.guess_type(ruta_local)
         if not mime_type:
             mime_type = "application/octet-stream"
 

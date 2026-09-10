@@ -1,5 +1,7 @@
 # MediaWiki Sync (mw_sync)
 
+> 🌐 **Language / Idioma:** **Español** | [English](README.en.md) · **Manual:** [Español](MANUAL_USO_MEDIAWIKI_SYNC.md) | [English](MANUAL_USO_MEDIAWIKI_SYNC.en.md)
+
 Suite nativa en Python para la sincronización bidireccional de alto rendimiento entre servidores **MediaWiki** y repositorios de documentación local en formato **Markdown (.md)**.
 
 Diseñada con una arquitectura de **cero dependencias externas** (utiliza exclusivamente la biblioteca estándar de Python 3.13+) y optimizada para entornos corporativos con doble capa de autenticación, inspección SSL personalizada y concurrencia multihilo.
@@ -43,6 +45,7 @@ Diseñada con una arquitectura de **cero dependencias externas** (utiliza exclus
   - *Markdown -> Wikitext:* Transforma encabezados (`#` a `=`), negritas (`**` a `'''`), cursivas (`*` a `''`), listas (`-`/`*` a `*`, `1.` a `#`), bloques de codigo y sintaxis de imagenes sin contaminar la semantica wiki.
 - **Modo Diff Contextual Unificado:** Permite comparar antes de la subida el Wikitext generado frente al contenido remoto actual en formato `diff -u`.
 - **Saneador Offline Masivo:** Repara colecciones de archivos Markdown eliminando artefactos sintacticos, entidades HTML rotas y sangrias defectuosas.
+- **Internacionalización Nativa Completa (i18n):** Soporte bilingüe integral (español e inglés) en consola, comandos de ayuda (`--help`), preguntas interactivas y documentación. Detecta automáticamente el idioma del sistema operativo y permite selección forzada mediante `--lang` / `-l` o `MW_LANG`. Desarrollado 100% sobre la biblioteca estándar de Python sin dependencias adicionales.
 
 ---
 
@@ -138,7 +141,7 @@ Genera el paquete estándar y lo instala en cualquier entorno Python:
 poetry build
 
 # Instalar el wheel generado:
-pip install dist/mediawiki_sync-1.1.2-py3-none-any.whl
+pip install dist/mediawiki_sync-1.2.0-py3-none-any.whl
 
 # Comandos de terminal disponibles globalmente en el entorno:
 mw-sync --help
@@ -169,7 +172,7 @@ python3 -m mw_sync --help
 
 El motor de configuración resuelve los valores aplicando la siguiente jerarquía (de mayor a menor prioridad):
 
-1. **Parámetros CLI:** Argumentos pasados directamente en la terminal (ej. `--url`, `--threads 16`, `--wiki-user`).
+1. **Parámetros CLI:** Argumentos pasados directamente en la terminal (ej. `--url`, `--threads 16`, `--lang en`, `--wiki-user`).
 2. **Variables de Entorno del Sistema / Producción:** Variables exported en el sistema operativo, contenedor Docker o pipeline de CI/CD (ej. `export MW_URL=...`).
 3. **Archivo `.env` Local:** Cargas desde el archivo `.env` situado en el directorio de trabajo (sin sobrescribir variables ya existentes en el sistema).
 4. **Valores por Defecto:** Valores predeterminados integrados en la aplicación.
@@ -263,6 +266,7 @@ Al ejecutarse, `mw_sync` cargará automáticamente las credenciales y la URL del
 | `MW_USER_AGENT` | Cabecera `User-Agent` personalizada enviada en las peticiones a MediaWiki | `MediaWikiSync/3.0 (Python; BiDirectional)` | Utilizado en cliente HTTP |
 | `MW_OUTPUT_DIR` | Directorio local donde se guardan los archivos Markdown e imágenes (relativo a `.env` si es relativo) | `./wiki_docs` | `--dir`, `-o` |
 | `MW_THREADS` | Número de hilos concurrentes para la descarga paralela de artículos e imágenes | `8` | `--threads`, `-t` |
+| `MW_LANG` | Idioma de la interfaz y mensajes en consola (`es` / `en`) | `es` (o locale del sistema) | `--lang`, `-l` |
 | `MW_EDIT_SUMMARY` | Resumen predeterminado en el historial de revisiones al publicar cambios en MediaWiki | `Actualizado desde local Markdown vía mediawiki_sync` | `--summary` |
 | `MW_TEST_LIVE` | *(Testing)* Habilita la suite de pruebas E2E contra un servidor MediaWiki en vivo (`1`/`0`) | `0` | Entorno de Pruebas |
 | `MW_TEST_LIVE_URL` | *(Testing)* Endpoint Action API para pruebas E2E en vivo | `http://localhost:8080/api.php` | Entorno de Pruebas |
@@ -300,6 +304,24 @@ MW_EDIT_SUMMARY=Sincronizado automáticamente desde Git
 ## Guia de Uso CLI
 
 Puede ejecutarse mediante los comandos de paquete registrados en la terminal (`mw-sync` en su forma corta o `mediawiki-sync` en su forma larga), o bien como módulo mediante `python3 -m mw_sync`. Todos aceptan exactamente los mismos parámetros.
+
+### Selección de Idioma (i18n)
+
+MediaWiki Sync incluye soporte bilingüe nativo. Por defecto utiliza español (`es`) o detecta el idioma del sistema operativo. Puedes forzar el idioma en cualquier momento con `--lang` (o `-l`):
+
+```bash
+# Ver ayuda en inglés:
+mw-sync --lang en --help
+
+# Ver ayuda en español:
+mw-sync --lang es --help
+
+# Ejecutar descarga u operaciones con interfaz en inglés:
+mw-sync --lang en
+
+# Configuración persistente en el archivo .env:
+# MW_LANG=en
+```
 
 ### Descarga Incremental Concurrente
 
@@ -440,6 +462,7 @@ print(wikitext)
 
 | Argumento | Abreviatura | Variable de Entorno Mapeada | Descripción | Valor por Defecto |
 | :--- | :--- | :--- | :--- | :--- |
+| `--lang` | `-l` | `MW_LANG` | Idioma de la interfaz (`es` = Español, `en` = Inglés) | `es` (o locale del sistema) |
 | `--download` | `-dl` | N/A | Modo descarga incremental de MediaWiki a local | Activo por defecto |
 | `--upload` | `-up` | N/A | Modo subida de cambios locales a MediaWiki | Desactivado |
 | `--sanitize` | | N/A | Ejecuta el saneador de sintaxis Markdown offline | Desactivado |
@@ -498,6 +521,7 @@ poetry run pytest tests
 - `tests/test_converters.py`: Valida la conversión bidireccional HTML -> Markdown y Markdown -> Wikitext, verificando listas continuas anidadas (`#`, `#*`), tablas complejas, enlaces relativos locales, bloques de código y remoción de artefactos (`__TOC__`, `[editar]`).
 - `tests/test_uploader.py`: Valida la extracción de títulos desde metadatos frontmatter y encabezados `#`, así como el flujo de detección y alerta ante conflictos de revisión remota (`baserevid`).
 - `tests/test_empty_pages.py`: Valida la detección de páginas vacías, creación de plantillas Markdown locales, registro en `.sync_state.json` y eliminación remota (`action=delete`).
+- `tests/test_i18n.py`: Valida el sistema de internacionalización (cambio dinámico de idioma, paridad completa de catálogos ES/EN, resolución de prioridades y parsing de respuestas interactivas).
 - `tests/test_live_wiki.py`: Batería de integración en vivo ejecutada en GitHub Actions contra un contenedor Docker de MediaWiki real (login, upload, download, detección de conflictos y ciclo de vida de páginas vacías).
 
 ---

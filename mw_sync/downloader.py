@@ -13,6 +13,7 @@ from mw_sync.client import MediaWikiClient
 from mw_sync.state import SyncState, calcular_sha256
 from mw_sync.converters.html_to_md import html_a_markdown, sanitizar_nombre_archivo, asignar_nombres_archivos
 from mw_sync.empty_pages import gestionar_paginas_vacias
+from mw_sync.i18n import _
 
 
 def ejecutar_descarga(cliente: MediaWikiClient, output_dir: str, forzar: bool = False,
@@ -23,9 +24,9 @@ def ejecutar_descarga(cliente: MediaWikiClient, output_dir: str, forzar: bool = 
     Descarga o actualiza de manera incremental todos los artículos e imágenes de la MediaWiki.
     """
     print("\n" + "=" * 75)
-    print("INICIANDO SINCRONIZACIÓN DESDE MEDIAWIKI (MODO INCREMENTAL CONCURRENTE)")
-    print(f"Directorio de destino: {os.path.abspath(output_dir)}")
-    print(f"Hilos de descarga:     {max_hilos}")
+    print(_("dl_banner"))
+    print(_("dl_dest_dir", dir=os.path.abspath(output_dir)))
+    print(_("dl_threads", threads=max_hilos))
     print("=" * 75)
 
     os.makedirs(output_dir, exist_ok=True)
@@ -40,16 +41,16 @@ def ejecutar_descarga(cliente: MediaWikiClient, output_dir: str, forzar: bool = 
     t_inicio = time.time()
 
     # 1. Obtener catálogo de artículos
-    print("\n1/4. Obteniendo catálogo de artículos remotos...")
+    print(_("dl_step1"))
     titulos = cliente.obtener_lista_paginas(incluir_redirecciones=incluir_redirecciones)
     if not titulos:
-        print("[AVISO] No se han encontrado artículos en la MediaWiki.")
+        print(_("dl_no_articles"))
         return
 
-    print(f"Localizados {len(titulos)} artículos en la wiki.")
+    print(_("dl_articles_found", count=len(titulos)))
 
     # 2. Consultar revisiones remotas por lotes (50 por llamada) para comparación incremental
-    print("2/4. Verificando revisiones en el servidor para detectar cambios...")
+    print(_("dl_step2"))
     revisiones_remotas = cliente.obtener_revisiones_lote(titulos)
 
     # Mapeo determinista y sin colisiones de títulos a nombres de archivo .md
@@ -79,11 +80,11 @@ def ejecutar_descarga(cliente: MediaWikiClient, output_dir: str, forzar: bool = 
 
     titulos_desambiguados = [t for t, f in mapa_archivos.items() if f != f"{sanitizar_nombre_archivo(t)}.md"]
 
-    print(f"Estado del catálogo:")
-    print(f"   - Artículos al día en local: {len(articulos_actualizados_locales)}")
-    print(f"   - Artículos nuevos o con cambios: {len(articulos_pendientes)}")
+    print(_("dl_catalog_status"))
+    print(_("dl_up_to_date", count=len(articulos_actualizados_locales)))
+    print(_("dl_pending", count=len(articulos_pendientes)))
     if titulos_desambiguados:
-        print(f"   - Artículos desambiguados por colisión de títulos: {len(titulos_desambiguados)}")
+        print(_("dl_disambiguated", count=len(titulos_desambiguados)))
 
     # 3. Descarga concurrente de artículos pendientes
     art_descargados = 0
@@ -91,7 +92,7 @@ def ejecutar_descarga(cliente: MediaWikiClient, output_dir: str, forzar: bool = 
     paginas_vacias_detectadas = []
 
     if articulos_pendientes:
-        print(f"\n3/4. Descargando {len(articulos_pendientes)} artículos con {max_hilos} hilos...")
+        print(_("dl_step3", count=len(articulos_pendientes), threads=max_hilos))
 
         def _descargar_un_articulo(item):
             t_art, nom_f, ruta_f, rev_esperada = item
@@ -140,14 +141,14 @@ def ejecutar_descarga(cliente: MediaWikiClient, output_dir: str, forzar: bool = 
                     art_descargados += 1
                     articulos_actualizados_locales.append((t_art, nom_f, tam))
                     if len(articulos_pendientes) <= 20 or idx % 10 == 0 or idx == len(articulos_pendientes):
-                        print(f"  [{idx}/{len(articulos_pendientes)}] Descargado: {t_art} ({tam // 1024 + 1} KB)")
+                        print(_("dl_article_downloaded", idx=idx, total=len(articulos_pendientes), title=t_art, size=tam // 1024 + 1))
                 elif tipo_res == "vacia":
                     ruta_f = os.path.join(output_dir, nom_f)
                     paginas_vacias_detectadas.append((t_art, nom_f, ruta_f, rev_art))
-                    print(f"  [AVISO] Página vacía detectada: '{t_art}'")
+                    print(_("dl_empty_detected", title=t_art))
                 else:
                     art_errores += 1
-                    print(f"  [ERROR] Fallo en '{t_art}': {extra}")
+                    print(_("dl_article_error", title=t_art, error=extra))
 
         if paginas_vacias_detectadas:
             gestionar_paginas_vacias(
@@ -162,7 +163,7 @@ def ejecutar_descarga(cliente: MediaWikiClient, output_dir: str, forzar: bool = 
 
     # 4. Descarga de imágenes
     if not no_imagenes:
-        print("\n--- 4/4. Verificando catálogo de imágenes...")
+        print(_("dl_step4"))
         lista_imagenes = cliente.obtener_catalogo_imagenes()
         imagenes_pendientes = []
 
@@ -183,10 +184,10 @@ def ejecutar_descarga(cliente: MediaWikiClient, output_dir: str, forzar: bool = 
             if debe_descargar:
                 imagenes_pendientes.append((nom, url, ruta_local, sha1_remoto))
 
-        print(f"Total imágenes en wiki: {len(lista_imagenes)} | Pendientes de descarga: {len(imagenes_pendientes)}")
+        print(_("dl_total_images", total=len(lista_imagenes), pending=len(imagenes_pendientes)))
 
         if imagenes_pendientes:
-            print(f"Descargando {len(imagenes_pendientes)} imágenes concurrentemente...")
+            print(_("dl_downloading_images", count=len(imagenes_pendientes)))
 
             def _descargar_una_imagen(it):
                 nom, url, ruta_local, sha1_remoto = it
@@ -212,23 +213,23 @@ def ejecutar_descarga(cliente: MediaWikiClient, output_dir: str, forzar: bool = 
                         if len(muestras_errores) < 5:
                             muestras_errores.append((nom, motivo))
                     if idx % 25 == 0 or idx == len(imagenes_pendientes):
-                        print(f"  Progreso de imágenes: {idx}/{len(imagenes_pendientes)} ({imgs_descargadas_ok} guardadas)")
+                        print(_("dl_images_progress", idx=idx, total=len(imagenes_pendientes), saved=imgs_descargadas_ok))
 
             if imgs_fallos > 0:
-                print(f"\n  [AVISO] {imgs_fallos} imágenes no pudieron descargarse.")
+                print(_("dl_images_failed", count=imgs_fallos))
                 if muestras_errores:
-                    print("  Detalle de fallos detectados (muestra representativa):")
+                    print(_("dl_images_sample_errors"))
                     for nom_err, mot_err in muestras_errores:
-                        print(f"    • Archivo '{nom_err}': {mot_err}")
+                        print(_("dl_image_error_item", name=nom_err, reason=mot_err))
 
     # 5. Generar / actualizar índice general
     ruta_indice = os.path.join(output_dir, "00_INDICE_MEDIAWIKI.md")
     articulos_actualizados_locales.sort(key=lambda x: x[0].lower())
     with open(ruta_indice, "w", encoding="utf-8") as f:
-        f.write("# INDICE GENERAL DE LA MEDIAWIKI\n\n")
-        f.write(f"Última actualización: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
-        f.write(f"Total de artículos indexados: {len(articulos_actualizados_locales)}\n\n")
-        f.write("| Título del Artículo | Archivo Local | Tamaño |\n")
+        f.write(_("dl_index_title"))
+        f.write(_("dl_index_last_update", date=datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
+        f.write(_("dl_index_total", total=len(articulos_actualizados_locales)))
+        f.write(f"| {_('dl_index_th_title')} | {_('dl_index_th_file')} | {_('dl_index_th_size')} |\n")
         f.write("| :--- | :--- | :--- |\n")
         for t, nom, tam in articulos_actualizados_locales:
             f.write(f"| {t} | [{nom}](./{nom}) | {tam // 1024 + 1} KB |\n")
@@ -237,12 +238,12 @@ def ejecutar_descarga(cliente: MediaWikiClient, output_dir: str, forzar: bool = 
 
     duracion = time.time() - t_inicio
     print("\n" + "=" * 75)
-    print("SINCRONIZACIÓN FINALIZADA CON ÉXITO")
-    print(f"Tiempo total:                      {duracion:.1f} segundos")
-    print(f"Artículos nuevos / actualizados:   {art_descargados}")
-    print(f"Artículos conservados sin cambios: {len(articulos_actualizados_locales) - art_descargados}")
+    print(_("dl_success_banner"))
+    print(_("dl_summary_time", time=duracion))
+    print(_("dl_summary_new", count=art_descargados))
+    print(_("dl_summary_kept", count=len(articulos_actualizados_locales) - art_descargados))
     if paginas_vacias_detectadas:
-        print(f"Páginas vacías gestionadas:        {len(paginas_vacias_detectadas)}")
-    print(f"Errores en artículos:              {art_errores}")
-    print(f"Índice actualizado:                {os.path.abspath(ruta_indice)}")
+        print(_("dl_summary_empty", count=len(paginas_vacias_detectadas)))
+    print(_("dl_summary_errors", count=art_errores))
+    print(_("dl_summary_index", path=os.path.abspath(ruta_indice)))
     print("=" * 75)

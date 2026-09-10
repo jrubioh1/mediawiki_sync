@@ -4,7 +4,7 @@ build-backend = "poetry.core.masonry.api"
 
 [project]
 name = "mediawiki-sync"
-version = "1.1.2"
+version = "1.2.0"
 description = "Suite nativa en Python para sincronización bidireccional entre MediaWiki y Markdown."
 readme = "README.md"
 requires-python = ">=3.13"
@@ -21,6 +21,8 @@ classifiers = [
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: 3.14",
+    "Natural Language :: English",
+    "Natural Language :: Spanish",
     "Topic :: Documentation",
     "Topic :: Internet :: WWW/HTTP :: Dynamic Content :: Content Management System",
     "Topic :: Text Processing :: Markup :: Markdown",

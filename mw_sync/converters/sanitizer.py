@@ -7,6 +7,7 @@ import os
 import re
 import urllib.parse
 from mw_sync.converters.html_to_md import sanitizar_nombre_archivo, normalizar_enlace_wiki_a_md
+from mw_sync.i18n import _
 
 
 def limpiar_contenido_markdown(contenido: str) -> tuple[str, bool]:
@@ -155,14 +156,14 @@ def sanear_directorio(directorio: str, dry_run: bool = False) -> tuple[int, int]
     Devuelve (total_revisados, total_modificados).
     """
     if not os.path.isdir(directorio):
-        print(f"[ERROR] El directorio {directorio} no existe.")
+        print(_("san_dir_not_found", dir=directorio))
         return 0, 0
 
     archivos = [f for f in os.listdir(directorio) if f.endswith(".md") and not re.match(r'^\d{2}_INDICE', f)]
     total = len(archivos)
     modificados = 0
 
-    print(f"[INFO] Iniciando saneamiento de {total} archivos Markdown en {directorio}...")
+    print(_("san_starting", total=total, dir=directorio))
 
     for f in archivos:
         ruta = os.path.join(directorio, f)
@@ -177,8 +178,8 @@ def sanear_directorio(directorio: str, dry_run: bool = False) -> tuple[int, int]
                     with open(ruta, "w", encoding="utf-8") as fp:
                         fp.write(nuevo_contenido)
         except Exception as e:
-            print(f"[AVISO] Error procesando {f}: {e}")
+            print(_("san_error_file", file=f, err=e))
 
-    print(f"[OK] Saneamiento finalizado: {modificados} de {total} archivos fueron limpiados y corregidos.")
+    print(_("san_finished", mod=modificados, total=total))
     return total, modificados
 

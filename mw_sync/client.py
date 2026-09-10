@@ -12,6 +12,7 @@ import base64
 import mimetypes
 import urllib.parse
 import urllib.request
+import urllib.error
 import http.cookiejar
 from mw_sync.config import EXTENSIONES_MULTIMEDIA, DEFAULT_CONFIG
 
@@ -63,6 +64,9 @@ class MediaWikiClient:
         self._csrf_token = None
 
         self.timeout = float(os.getenv("MW_TIMEOUT", "10.0"))
+
+        self.session = None
+        self.opener = None
 
         if HAS_REQUESTS:
             self.session = requests.Session()
@@ -418,8 +422,9 @@ class MediaWikiClient:
 
             headers_req = {"User-Agent": self.user_agent}
             auth_obj = None
-            if self.http_user and self.http_password:
+            if HAS_REQUESTS and self.http_user and self.http_password:
                 auth_obj = HTTPBasicAuth(self.http_user, self.http_password)
+            if self.http_user and self.http_password:
                 raw_token = f"{self.http_user}:{self.http_password}".encode("latin1")
                 headers_req["Authorization"] = f"Basic {base64.b64encode(raw_token).decode('ascii')}"
 
@@ -427,7 +432,7 @@ class MediaWikiClient:
 
             for u_cand in candidatos_url:
                 try:
-                    if HAS_REQUESTS:
+                    if HAS_REQUESTS and self.session is not None:
                         r = self.session.get(u_cand, stream=True, timeout=30.0, auth=auth_obj, headers=headers_req)
                         if r.status_code == 200:
                             with open(ruta_destino, "wb") as f:
@@ -440,10 +445,17 @@ class MediaWikiClient:
                     else:
                         req = urllib.request.Request(u_cand, headers=headers_req)
                         with self.opener.open(req, timeout=30.0) as resp:
-                            with open(ruta_destino, "wb") as f:
-                                while chunk := resp.read(65536):
-                                    f.write(chunk)
-                        return True, ""
+                            status = getattr(resp, "status", getattr(resp, "code", 200))
+                            if status == 200:
+                                with open(ruta_destino, "wb") as f:
+                                    while chunk := resp.read(65536):
+                                        f.write(chunk)
+                                return True, ""
+                            else:
+                                reason = getattr(resp, "reason", "Error")
+                                ultimo_error = f"HTTP {status} ({reason}) en {u_cand}"
+                except urllib.error.HTTPError as e_http:
+                    ultimo_error = f"HTTP {e_http.code} ({e_http.reason}) en {u_cand}"
                 except Exception as e_cand:
                     ultimo_error = f"{type(e_cand).__name__}: {e_cand} en {u_cand}"
 

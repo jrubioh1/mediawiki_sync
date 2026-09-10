@@ -2,10 +2,12 @@
 Pruebas unitarias para la resolución de colisiones de nombres de archivo,
 mapeo de títulos y filtrado de redirecciones en MediaWiki Sync.
 """
+import io
 import os
 import shutil
 import tempfile
 import unittest
+import urllib.error
 from unittest.mock import MagicMock
 
 from mw_sync.converters.html_to_md import sanitizar_nombre_archivo, asignar_nombres_archivos
@@ -164,6 +166,52 @@ class TestDescargaArchivosBinarios(unittest.TestCase):
     def tearDown(self):
         shutil.rmtree(self.tmpdir, ignore_errors=True)
 
+    def _configurar_mock_transporte(self, client, urls_solicitadas, callback_respuesta):
+        """
+        Configura los mocks de red para client.session (requests) y/o client.opener (urllib).
+        callback_respuesta(url) debe retornar (status_code: int, content: bytes).
+        """
+        class MockResponse:
+            def __init__(self, status_code, content=b""):
+                self.status_code = status_code
+                self.reason = "OK" if status_code == 200 else ("Forbidden" if status_code == 403 else "Not Found")
+                self._content = content
+
+            def iter_content(self, chunk_size=65536):
+                yield self._content
+
+        def fake_requests_get(url, **kwargs):
+            urls_solicitadas.append(url)
+            status, content = callback_respuesta(url)
+            return MockResponse(status, content)
+
+        class MockUrllibResponse(io.BytesIO):
+            def __init__(self, status_code, content=b""):
+                super().__init__(content)
+                self.status = status_code
+                self.code = status_code
+                self.reason = "OK" if status_code == 200 else ("Forbidden" if status_code == 403 else "Not Found")
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                pass
+
+        def fake_opener_open(req, timeout=None):
+            url = req.full_url if hasattr(req, "full_url") else str(req)
+            urls_solicitadas.append(url)
+            status, content = callback_respuesta(url)
+            if status == 200:
+                return MockUrllibResponse(status, content)
+            reason = "Forbidden" if status == 403 else "Not Found"
+            raise urllib.error.HTTPError(url, status, reason, {}, None)
+
+        if client.session is not None:
+            client.session.get = fake_requests_get
+        if client.opener is not None:
+            client.opener.open = fake_opener_open
+
     def test_descarga_binario_normaliza_host_y_reintenta_subdirectorio(self):
         """Valida que si la wiki está en /mediawiki/api.php y la imagen viene como http://localhost/images/foo.png,
         el cliente prueba candidates con https y el host de la API, y si /images/ da 404 prueba /mediawiki/images/."""
@@ -175,23 +223,12 @@ class TestDescargaArchivosBinarios(unittest.TestCase):
 
         urls_solicitadas = []
 
-        class MockResponse:
-            def __init__(self, status_code, content=b""):
-                self.status_code = status_code
-                self.reason = "OK" if status_code == 200 else "Not Found"
-                self._content = content
-
-            def iter_content(self, chunk_size=65536):
-                yield self._content
-
-        def fake_get(url, **kwargs):
-            urls_solicitadas.append(url)
-            # Simular que /images/ da 404 pero /mediawiki/images/ da 200
+        def responder(url):
             if "/mediawiki/images/" in url:
-                return MockResponse(200, b"fake_png_data")
-            return MockResponse(404)
+                return 200, b"fake_png_data"
+            return 404, b""
 
-        client.session.get = fake_get
+        self._configurar_mock_transporte(client, urls_solicitadas, responder)
 
         destino = os.path.join(self.tmpdir, "images", "foo.png")
         ok, error = client.descargar_archivo_binario("http://localhost/images/foo.png", destino)
@@ -214,15 +251,12 @@ class TestDescargaArchivosBinarios(unittest.TestCase):
             http_password="pass"
         )
 
-        class MockResponse:
-            def __init__(self, status_code):
-                self.status_code = status_code
-                self.reason = "Forbidden"
+        urls_solicitadas = []
 
-            def iter_content(self, chunk_size=65536):
-                yield b""
+        def responder(url):
+            return 403, b""
 
-        client.session.get = lambda url, **kwargs: MockResponse(403)
+        self._configurar_mock_transporte(client, urls_solicitadas, responder)
 
         destino = os.path.join(self.tmpdir, "images", "bloqueada.png")
         ok, error = client.descargar_archivo_binario("https://example.com/images/bloqueada.png", destino)
@@ -230,6 +264,41 @@ class TestDescargaArchivosBinarios(unittest.TestCase):
         self.assertFalse(ok)
         self.assertIn("HTTP 403 (Forbidden)", error)
         self.assertIn("https://example.com/images/bloqueada.png", error)
+
+    def test_descarga_binario_urllib_sin_requests(self):
+        """Verifica explícitamente el flujo con urllib cuando requests no está disponible."""
+        import mw_sync.client
+        orig_has_requests = mw_sync.client.HAS_REQUESTS
+        try:
+            mw_sync.client.HAS_REQUESTS = False
+            client = MediaWikiClient(
+                url="https://icae.intranet.gc/mediawiki/api.php",
+                http_user="IAE",
+                http_password="secretpassword"
+            )
+            self.assertIsNone(client.session)
+            self.assertIsNotNone(client.opener)
+
+            urls_solicitadas = []
+
+            def responder(url):
+                if "/mediawiki/images/" in url:
+                    return 200, b"urllib_png_data"
+                return 404, b""
+
+            self._configurar_mock_transporte(client, urls_solicitadas, responder)
+
+            destino = os.path.join(self.tmpdir, "images", "urllib_foo.png")
+            ok, error = client.descargar_archivo_binario("http://localhost/images/foo.png", destino)
+
+            self.assertTrue(ok)
+            self.assertEqual(error, "")
+            self.assertTrue(os.path.isfile(destino))
+            with open(destino, "rb") as f:
+                self.assertEqual(f.read(), b"urllib_png_data")
+            self.assertIn("https://icae.intranet.gc/mediawiki/images/foo.png", urls_solicitadas)
+        finally:
+            mw_sync.client.HAS_REQUESTS = orig_has_requests
 
 
 if __name__ == "__main__":

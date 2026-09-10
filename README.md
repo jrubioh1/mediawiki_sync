@@ -138,7 +138,7 @@ Genera el paquete estándar y lo instala en cualquier entorno Python:
 poetry build
 
 # Instalar el wheel generado:
-pip install dist/mediawiki_sync-1.0.0-py3-none-any.whl
+pip install dist/mediawiki_sync-1.1.0-py3-none-any.whl
 
 # Comandos de terminal disponibles globalmente en el entorno:
 mw-sync --help
@@ -379,7 +379,10 @@ Cuando una pagina en MediaWiki carece de contenido, el sincronizador la registra
 # Consultar y gestionar interactivamente las paginas vacias registradas:
 mw-sync --empty-pages
 
-# Crear plantillas .md locales con encabezado y frontmatter listos para rellenar:
+# Si cambiaste de opinion tras omitirlas: crear plantillas locales de golpe:
+mw-sync --empty-pages --empty-action create-md
+
+# Crear plantillas .md locales con encabezado y frontmatter listos para rellenar (en descarga):
 mw-sync --empty-action create-md
 
 # Eliminar las paginas vacias del servidor MediaWiki (action=delete):
@@ -388,6 +391,9 @@ mw-sync --empty-action delete-remote --yes
 # Omitir paginas vacias en ejecuciones automatizadas:
 mw-sync --empty-action ignore
 ```
+
+> [!TIP]
+> **Reactivacion de paginas omitidas:** Si anteriormente selecciono la opcion de omitir paginas vacias, estas quedan almacenadas en el estado local con status `omitida`. Para convertirlas en plantillas `.md` locales en cualquier momento posterior, ejecute `mw-sync --empty-pages` (y pulse `1`) o `mw-sync --empty-pages --empty-action create-md` (modo directo). Si cualquier usuario anade contenido a una pagina omitida en el servidor, `mw-sync` detectara la nueva revision y la descargara automaticamente.
 
 ---
 

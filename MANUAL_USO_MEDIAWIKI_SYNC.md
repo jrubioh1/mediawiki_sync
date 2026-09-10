@@ -472,15 +472,25 @@ Cuando una página remota en MediaWiki no tiene contenido o texto renderizable, 
 # 1. Consultar y gestionar interactivamente páginas vacías registradas:
 mw-sync --empty-pages
 
-# 2. Descargar forzando creación automática de .md vacíos para rellenar:
+# 2. Si cambias de opinión tras omitirlas: crear plantillas .md directamente sin preguntas:
+mw-sync --empty-pages --empty-action create-md
+
+# 3. Descargar forzando creación automática de .md vacíos para rellenar:
 mw-sync --empty-action create-md
 
-# 3. Descargar forzando eliminación de páginas vacías del servidor remoto:
+# 4. Descargar forzando eliminación de páginas vacías del servidor remoto:
 mw-sync --empty-action delete-remote --yes
 
-# 4. Descargar silenciando páginas vacías (modo no interactivo / scripts):
+# 5. Descargar silenciando páginas vacías (modo no interactivo / scripts):
 mw-sync --empty-action ignore
 ```
+
+> [!TIP]
+> **¿Cambiaste de opinión tras omitir páginas vacías?**
+> Si en su momento elegiste la opción `[3] Omitir / Ignorar`, las páginas quedan guardadas en `.sync_state.json` con estado `omitida`. En cualquier momento posterior puedes ejecutar:
+> * `mw-sync --empty-pages`: te mostrará la lista de todas las páginas omitidas y podrás pulsar `[1]` para crearlas todas como plantillas locales.
+> * `mw-sync --empty-pages --empty-action create-md`: las creará de forma directa y desatendida.
+> * Además, si cualquier compañero edita en la wiki una página que tenías omitida, el sincronizador detectará automáticamente el nuevo `revid` y te la descargará sola en la siguiente sincronización.
 
 ---
 
@@ -501,6 +511,7 @@ mw-sync --empty-action ignore
 | `--dir` | `-o` | `MW_OUTPUT_DIR` | Directorio local de documentación | `./wiki_docs` |
 | `--file` | | N/A | Archivo `.md` o imagen específico a subir | `None` |
 | `--no-images` | | N/A | Omite la descarga o subida de archivos multimedia | Falso |
+| `--include-redirects` | | `MW_INCLUDE_REDIRECTS` | Incluye páginas de redirección de MediaWiki en la sincronización | Falso |
 | `--summary` | | `MW_EDIT_SUMMARY` | Resumen de edición para el historial de MediaWiki | Configurado en entorno |
 | `--url` | | `MW_URL` | URL del endpoint `api.php` | Configurado en entorno |
 | `--http-user` | | `MW_HTTP_USER` (o `MW_USER`) | Usuario de autenticación Apache / HTTP Basic Auth | Configurado en entorno |

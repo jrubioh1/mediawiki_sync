@@ -85,6 +85,8 @@ Ejemplos de uso:
     parser.add_argument("--file", help="Especifica un único archivo .md o multimedia para subir.")
     parser.add_argument("--no-images", action="store_true",
                         help="Ignora la sincronización de archivos multimedia.")
+    parser.add_argument("--include-redirects", action="store_true",
+                        help="Incluye páginas de redirección de MediaWiki en la sincronización (por defecto se omiten).")
     parser.add_argument("--summary", default=DEFAULT_CONFIG["EDIT_SUMMARY"],
                         help="Mensaje de resumen para el historial de revisiones de MediaWiki.")
 
@@ -222,7 +224,8 @@ Ejemplos de uso:
             no_imagenes=args.no_images,
             max_hilos=args.threads,
             empty_action=args.empty_action,
-            auto_confirmar=args.yes
+            auto_confirmar=args.yes,
+            incluir_redirecciones=args.include_redirects
         )
 
 

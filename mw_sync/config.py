@@ -85,6 +85,7 @@ def actualizar_config_desde_directorio(dir_path: str = None) -> str:
         DEFAULT_CONFIG["THREADS"] = int(os.getenv("MW_THREADS", "8"))
         DEFAULT_CONFIG["USER_AGENT"] = os.getenv("MW_USER_AGENT", "MediaWikiSync/3.0 (Python; BiDirectional)")
         DEFAULT_CONFIG["EDIT_SUMMARY"] = os.getenv("MW_EDIT_SUMMARY", "Actualizado desde local Markdown vía mediawiki_sync")
+        DEFAULT_CONFIG["INCLUDE_REDIRECTS"] = os.getenv("MW_INCLUDE_REDIRECTS", "false").lower() in ("true", "1", "yes")
 
     # Determinar el directorio de documentación efectivo
     if env_file:
@@ -153,7 +154,8 @@ DEFAULT_CONFIG = {
     "OUTPUT_DIR": os.getenv("MW_OUTPUT_DIR", "./wiki_docs"),
     "THREADS": int(os.getenv("MW_THREADS", "8")),
     "USER_AGENT": os.getenv("MW_USER_AGENT", "MediaWikiSync/3.0 (Python; BiDirectional)"),
-    "EDIT_SUMMARY": os.getenv("MW_EDIT_SUMMARY", "Actualizado desde local Markdown vía mediawiki_sync")
+    "EDIT_SUMMARY": os.getenv("MW_EDIT_SUMMARY", "Actualizado desde local Markdown vía mediawiki_sync"),
+    "INCLUDE_REDIRECTS": os.getenv("MW_INCLUDE_REDIRECTS", "false").lower() in ("true", "1", "yes")
 }
 
 

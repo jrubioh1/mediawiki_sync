@@ -18,6 +18,56 @@ def sanitizar_nombre_archivo(titulo: str) -> str:
     return s if s else "articulo_sin_titulo"
 
 
+def asignar_nombres_archivos(titulos: list[str], estado=None) -> dict[str, str]:
+    """
+    Asigna un nombre de archivo único y determinista (.md) a cada título de MediaWiki.
+    Resuelve colisiones de sanitización (ej: 'Título.' vs 'Título' o 'Manual: A' vs 'Manual:A')
+    desambiguando con sufijos numéricos (_1.md, _2.md, etc.) y respetando asignaciones
+    existentes en el estado (.sync_state.json).
+    """
+    mapa_resultado = {}
+    archivos_ocupados = set()
+
+    mapa_previo = {}
+    if estado is not None:
+        if hasattr(estado, "obtener_mapa_titulos_existentes"):
+            mapa_previo = estado.obtener_mapa_titulos_existentes()
+        elif isinstance(estado, dict):
+            mapa_previo = estado
+
+    # 1. Asignar primero los títulos que ya tienen archivo asignado en el estado
+    titulos_restantes = []
+    for t in titulos:
+        if t in mapa_previo:
+            arch = mapa_previo[t]
+            if arch not in archivos_ocupados:
+                mapa_resultado[t] = arch
+                archivos_ocupados.add(arch)
+                continue
+        titulos_restantes.append(t)
+
+    # 2. Para los restantes, ordenar para garantizar asignación determinista y reproducible
+    titulos_restantes.sort(key=lambda s: (s.lower(), s))
+
+    for t in titulos_restantes:
+        base_slug = sanitizar_nombre_archivo(t)
+        candidato = f"{base_slug}.md"
+        if candidato not in archivos_ocupados:
+            mapa_resultado[t] = candidato
+            archivos_ocupados.add(candidato)
+        else:
+            contador = 1
+            while True:
+                candidato = f"{base_slug}_{contador}.md"
+                if candidato not in archivos_ocupados:
+                    mapa_resultado[t] = candidato
+                    archivos_ocupados.add(candidato)
+                    break
+                contador += 1
+
+    return mapa_resultado
+
+
 def normalizar_enlace_wiki_a_md(href: str) -> str:
     """
     Convierte una URL interna de MediaWiki a un enlace relativo a archivo .md local.

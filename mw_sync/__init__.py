@@ -16,12 +16,12 @@ from mw_sync.uploader import (
     extraer_titulo_de_archivo_md,
     mostrar_diff_local,
 )
-from mw_sync.converters.html_to_md import html_a_markdown, sanitizar_nombre_archivo
+from mw_sync.converters.html_to_md import html_a_markdown, sanitizar_nombre_archivo, asignar_nombres_archivos
 from mw_sync.converters.md_to_wikitext import markdown_a_wikitext
 from mw_sync.converters.sanitizer import sanear_directorio, limpiar_contenido_markdown
 from mw_sync.empty_pages import gestionar_paginas_vacias, listar_y_gestionar_paginas_vacias
 
-__version__ = "1.0.0"
+__version__ = "1.1.0"
 
 __all__ = [
     "MediaWikiClient",
@@ -33,6 +33,7 @@ __all__ = [
     "mostrar_diff_local",
     "html_a_markdown",
     "sanitizar_nombre_archivo",
+    "asignar_nombres_archivos",
     "markdown_a_wikitext",
     "sanear_directorio",
     "limpiar_contenido_markdown",

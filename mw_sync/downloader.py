@@ -11,13 +11,14 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from mw_sync.client import MediaWikiClient
 from mw_sync.state import SyncState, calcular_sha256
-from mw_sync.converters.html_to_md import html_a_markdown, sanitizar_nombre_archivo
+from mw_sync.converters.html_to_md import html_a_markdown, sanitizar_nombre_archivo, asignar_nombres_archivos
 from mw_sync.empty_pages import gestionar_paginas_vacias
 
 
 def ejecutar_descarga(cliente: MediaWikiClient, output_dir: str, forzar: bool = False,
                       no_imagenes: bool = False, max_hilos: int = 8,
-                      empty_action: str = "ask", auto_confirmar: bool = False):
+                      empty_action: str = "ask", auto_confirmar: bool = False,
+                      incluir_redirecciones: bool = False):
     """
     Descarga o actualiza de manera incremental todos los artículos e imágenes de la MediaWiki.
     """
@@ -40,7 +41,7 @@ def ejecutar_descarga(cliente: MediaWikiClient, output_dir: str, forzar: bool = 
 
     # 1. Obtener catálogo de artículos
     print("\n1/4. Obteniendo catálogo de artículos remotos...")
-    titulos = cliente.obtener_lista_paginas()
+    titulos = cliente.obtener_lista_paginas(incluir_redirecciones=incluir_redirecciones)
     if not titulos:
         print("[AVISO] No se han encontrado artículos en la MediaWiki.")
         return
@@ -51,11 +52,14 @@ def ejecutar_descarga(cliente: MediaWikiClient, output_dir: str, forzar: bool = 
     print("2/4. Verificando revisiones en el servidor para detectar cambios...")
     revisiones_remotas = cliente.obtener_revisiones_lote(titulos)
 
+    # Mapeo determinista y sin colisiones de títulos a nombres de archivo .md
+    mapa_archivos = asignar_nombres_archivos(titulos, estado)
+
     articulos_pendientes = []
     articulos_actualizados_locales = []
 
     for titulo in titulos:
-        nombre_archivo = f"{sanitizar_nombre_archivo(titulo)}.md"
+        nombre_archivo = mapa_archivos[titulo]
         ruta_archivo = os.path.join(output_dir, nombre_archivo)
         rev_remota = revisiones_remotas.get(titulo, {}).get("revid", 0)
         rev_local = estado.obtener_revid(nombre_archivo)
@@ -73,9 +77,13 @@ def ejecutar_descarga(cliente: MediaWikiClient, output_dir: str, forzar: bool = 
             tam = os.path.getsize(ruta_archivo)
             articulos_actualizados_locales.append((titulo, nombre_archivo, tam))
 
+    titulos_desambiguados = [t for t, f in mapa_archivos.items() if f != f"{sanitizar_nombre_archivo(t)}.md"]
+
     print(f"Estado del catálogo:")
     print(f"   - Artículos al día en local: {len(articulos_actualizados_locales)}")
     print(f"   - Artículos nuevos o con cambios: {len(articulos_pendientes)}")
+    if titulos_desambiguados:
+        print(f"   - Artículos desambiguados por colisión de títulos: {len(titulos_desambiguados)}")
 
     # 3. Descarga concurrente de artículos pendientes
     art_descargados = 0
@@ -131,7 +139,7 @@ def ejecutar_descarga(cliente: MediaWikiClient, output_dir: str, forzar: bool = 
                 if tipo_res == "ok":
                     art_descargados += 1
                     articulos_actualizados_locales.append((t_art, nom_f, tam))
-                    if idx % 10 == 0 or idx == len(articulos_pendientes):
+                    if len(articulos_pendientes) <= 20 or idx % 10 == 0 or idx == len(articulos_pendientes):
                         print(f"  [{idx}/{len(articulos_pendientes)}] Descargado: {t_art} ({tam // 1024 + 1} KB)")
                 elif tipo_res == "vacia":
                     ruta_f = os.path.join(output_dir, nom_f)
@@ -161,11 +169,19 @@ def ejecutar_descarga(cliente: MediaWikiClient, output_dir: str, forzar: bool = 
         for img in lista_imagenes:
             nom = img.get("name")
             url = img.get("url")
+            sha1_remoto = img.get("sha1")
             if not nom or not url:
                 continue
             ruta_local = os.path.join(images_dir, nom)
-            if forzar or not os.path.isfile(ruta_local) or os.path.getsize(ruta_local) == 0:
-                imagenes_pendientes.append((nom, url, ruta_local))
+            existe_local = os.path.isfile(ruta_local) and os.path.getsize(ruta_local) > 0
+            sha1_local = estado.obtener_sha1_imagen(nom)
+
+            debe_descargar = forzar or not existe_local
+            if existe_local and sha1_remoto and sha1_local and sha1_remoto != sha1_local:
+                debe_descargar = True
+
+            if debe_descargar:
+                imagenes_pendientes.append((nom, url, ruta_local, sha1_remoto))
 
         print(f"Total imágenes en wiki: {len(lista_imagenes)} | Pendientes de descarga: {len(imagenes_pendientes)}")
 
@@ -173,21 +189,30 @@ def ejecutar_descarga(cliente: MediaWikiClient, output_dir: str, forzar: bool = 
             print(f"Descargando {len(imagenes_pendientes)} imágenes concurrentemente...")
 
             def _descargar_una_imagen(it):
-                nom, url, ruta_local = it
+                nom, url, ruta_local, sha1_remoto = it
                 ok = cliente.descargar_archivo_binario(url, ruta_local)
-                if ok and os.path.isfile(ruta_local):
+                if ok and os.path.isfile(ruta_local) and os.path.getsize(ruta_local) > 0:
                     h_sha = calcular_sha256(ruta_local)
                     with lock_estado:
-                        estado.registrar_imagen(nom, h_sha)
+                        estado.registrar_imagen(nom, h_sha, sha1_remoto=sha1_remoto)
                     return True, nom
                 return False, nom
 
+            imgs_descargadas_ok = 0
+            imgs_fallos = 0
             with ThreadPoolExecutor(max_workers=max_hilos) as img_exec:
                 fut_imgs = [img_exec.submit(_descargar_una_imagen, it) for it in imagenes_pendientes]
                 for idx, f in enumerate(as_completed(fut_imgs), 1):
                     ok, nom = f.result()
+                    if ok:
+                        imgs_descargadas_ok += 1
+                    else:
+                        imgs_fallos += 1
                     if idx % 25 == 0 or idx == len(imagenes_pendientes):
-                        print(f"  Imágenes descargadas: {idx}/{len(imagenes_pendientes)}")
+                        print(f"  Progreso de imágenes: {idx}/{len(imagenes_pendientes)} ({imgs_descargadas_ok} guardadas)")
+
+            if imgs_fallos > 0:
+                print(f"  [AVISO] {imgs_fallos} imágenes no pudieron descargarse (comprobar conectividad o autenticación).")
 
     # 5. Generar / actualizar índice general
     ruta_indice = os.path.join(output_dir, "00_INDICE_MEDIAWIKI.md")

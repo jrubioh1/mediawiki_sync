@@ -254,8 +254,8 @@ class MediaWikiClient:
         self._csrf_token = "+\\"
         return self._csrf_token
 
-    def obtener_lista_paginas(self, namespace: int = 0) -> list[str]:
-        """Recupera la lista completa de artículos con paginación."""
+    def obtener_lista_paginas(self, namespace: int = 0, incluir_redirecciones: bool = False) -> list[str]:
+        """Recupera la lista completa de artículos con paginación, omitiendo redirecciones por defecto."""
         titulos = []
         apcontinue = None
 
@@ -264,7 +264,8 @@ class MediaWikiClient:
                 "action": "query",
                 "list": "allpages",
                 "aplimit": 500,
-                "apnamespace": namespace
+                "apnamespace": namespace,
+                "apfilterredir": "all" if incluir_redirecciones else "nonredirects"
             }
             if apcontinue:
                 params["apcontinue"] = apcontinue
@@ -331,7 +332,7 @@ class MediaWikiClient:
                 "action": "query",
                 "list": "allimages",
                 "ailimit": 500,
-                "aiprop": "url|size|mime|timestamp"
+                "aiprop": "url|size|mime|timestamp|sha1"
             }
             if aicontinue:
                 params["aicontinue"] = aicontinue
@@ -344,7 +345,9 @@ class MediaWikiClient:
                         "name": item.get("name"),
                         "url": item.get("url"),
                         "size": item.get("size", 0),
-                        "mime": item.get("mime", "")
+                        "mime": item.get("mime", ""),
+                        "sha1": item.get("sha1", ""),
+                        "timestamp": item.get("timestamp", "")
                     })
 
                 if "continue" in data and "aicontinue" in data["continue"]:
@@ -354,7 +357,6 @@ class MediaWikiClient:
             except Exception as e:
                 print(f"[AVISO] Error consultando catálogo de imágenes: {e}")
                 break
-
 
         return imagenes
 
@@ -382,10 +384,19 @@ class MediaWikiClient:
         """Descarga un archivo binario (imagen o documento) en streaming."""
         try:
             url_completa = urllib.parse.urljoin(self.base_url, url)
+
+            # Si self.api_url usa https y la url devuelta por MediaWiki usa http en el mismo host,
+            # forzar https para evitar que la redirección elimine las credenciales de Basic Auth
+            p_api = urllib.parse.urlparse(self.api_url)
+            p_url = urllib.parse.urlparse(url_completa)
+            if p_api.scheme == "https" and p_url.scheme == "http" and p_api.hostname == p_url.hostname:
+                url_completa = p_url._replace(scheme="https").geturl()
+
             os.makedirs(os.path.dirname(ruta_destino), exist_ok=True)
 
             if HAS_REQUESTS:
-                r = self.session.get(url_completa, stream=True, timeout=30.0)
+                auth = HTTPBasicAuth(self.http_user, self.http_password) if (self.http_user and self.http_password) else None
+                r = self.session.get(url_completa, stream=True, timeout=30.0, auth=auth)
                 if r.status_code == 200:
                     with open(ruta_destino, "wb") as f:
                         for chunk in r.iter_content(chunk_size=65536):

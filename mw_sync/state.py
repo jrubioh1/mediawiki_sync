@@ -65,11 +65,15 @@ class SyncState:
             "mtime": time.time()
         }
 
-    def registrar_imagen(self, nombre_archivo: str, hash_sha256: str):
+    def registrar_imagen(self, nombre_archivo: str, hash_sha256: str, sha1_remoto: str = ""):
         self.datos["imagenes"][nombre_archivo] = {
             "hash": hash_sha256,
+            "sha1": sha1_remoto,
             "mtime": time.time()
         }
+
+    def obtener_sha1_imagen(self, nombre_archivo: str) -> str | None:
+        return self.datos.get("imagenes", {}).get(nombre_archivo, {}).get("sha1")
 
     def obtener_revid(self, nombre_archivo: str) -> int:
         return self.datos["articulos"].get(nombre_archivo, {}).get("revid", 0)
@@ -79,6 +83,29 @@ class SyncState:
             return self.datos["articulos"][nombre_archivo].get("hash")
         if nombre_archivo in self.datos["imagenes"]:
             return self.datos["imagenes"][nombre_archivo].get("hash")
+        return None
+
+    def obtener_mapa_titulos_existentes(self) -> dict[str, str]:
+        """Devuelve un mapeo {titulo: nombre_archivo} de todos los artículos y páginas vacías registradas."""
+        mapa = {}
+        for nom, info in self.datos.get("articulos", {}).items():
+            t = info.get("titulo")
+            if t:
+                mapa[t] = nom
+        for t, info in self.datos.get("paginas_vacias", {}).items():
+            arch = info.get("archivo")
+            if arch and t not in mapa:
+                mapa[t] = arch
+        return mapa
+
+    def obtener_archivo_por_titulo(self, titulo: str) -> str | None:
+        """Devuelve el nombre de archivo asociado a un título si ya está registrado."""
+        for nom, info in self.datos.get("articulos", {}).items():
+            if info.get("titulo") == titulo:
+                return nom
+        vacias = self.datos.get("paginas_vacias", {})
+        if titulo in vacias:
+            return vacias[titulo].get("archivo")
         return None
 
     def sincronizar_hashes_locales(self, output_dir: str):

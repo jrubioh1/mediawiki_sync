@@ -175,6 +175,35 @@ class TestLiveMediaWikiE2E(unittest.TestCase):
         paginas_despues = [p.replace("_", " ") for p in self.client.obtener_lista_paginas()]
         self.assertNotIn(titulo_borrar, paginas_despues)
 
+    def test_07_descarga_con_colision_titulos(self):
+        """Valida que dos páginas con nombres en colisión (con y sin punto) se descargan en archivos separados sin bucle."""
+        base_t = f"Colision E2E {int(time.time())}"
+        t1 = base_t
+        t2 = f"{base_t}."
+
+        res1 = self.client.editar_pagina(t1, "Contenido del articulo 1", resumen="Colision E2E 1")
+        self.assertTrue(res1.get("exito"))
+        res2 = self.client.editar_pagina(t2, "Contenido del articulo 2", resumen="Colision E2E 2")
+        self.assertTrue(res2.get("exito"))
+
+        dir_descarga = os.path.join(self.test_dir, "colisiones")
+        ejecutar_descarga(self.client, dir_descarga, empty_action="ignore")
+
+        slug = base_t.replace(" ", "_")
+        f1 = os.path.join(dir_descarga, f"{slug}.md")
+        f2 = os.path.join(dir_descarga, f"{slug}_1.md")
+
+        self.assertTrue(os.path.isfile(f1), f"Debe existir {f1}")
+        self.assertTrue(os.path.isfile(f2), f"Debe existir {f2}")
+
+        with open(f1, "r", encoding="utf-8") as fp:
+            self.assertIn("Contenido del articulo 1", fp.read())
+        with open(f2, "r", encoding="utf-8") as fp:
+            self.assertIn("Contenido del articulo 2", fp.read())
+
+        # Segunda descarga: debe ejecutarse sin errores y sin duplicar
+        ejecutar_descarga(self.client, dir_descarga, empty_action="ignore")
+
 
 if __name__ == "__main__":
     unittest.main()

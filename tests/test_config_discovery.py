@@ -159,11 +159,12 @@ class TestConfigDirectoryDiscovery(unittest.TestCase):
         ruta_os = os.path.join(self.tmp_root, "os_docs_dir")
         os.makedirs(ruta_os, exist_ok=True)
 
-        with patch.dict(os.environ, {"MW_OUTPUT_DIR": ruta_os}, clear=False):
-            # Simulamos ejecución sin pasar --dir
-            resuelto = actualizar_config_desde_directorio(None)
-            self.assertEqual(resuelto, str(Path(ruta_os).resolve()))
-            self.assertEqual(DEFAULT_CONFIG["OUTPUT_DIR"], str(Path(ruta_os).resolve()))
+        with patch("pathlib.Path.cwd", return_value=Path(self.tmp_root)):
+            with patch.dict(os.environ, {"MW_OUTPUT_DIR": ruta_os}, clear=False):
+                # Simulamos ejecución sin pasar --dir
+                resuelto = actualizar_config_desde_directorio(None)
+                self.assertEqual(resuelto, str(Path(ruta_os).resolve()))
+                self.assertEqual(DEFAULT_CONFIG["OUTPUT_DIR"], str(Path(ruta_os).resolve()))
 
 
 if __name__ == "__main__":

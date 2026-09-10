@@ -110,7 +110,16 @@ mediawiki-sync/
 
 El proyecto puede utilizarse como paquete global/virtualenv o de forma autónoma:
 
-#### Opción 1: Entorno de desarrollo con Poetry (Recomendado)
+#### Opción 1: Instalación directa desde PyPI (Recomendado)
+```bash
+pip install mediawiki-sync
+
+# Comandos de terminal disponibles en el sistema o virtualenv:
+mw-sync --help
+mediawiki-sync --help
+```
+
+#### Opción 2: Entorno de desarrollo local con Poetry
 Instala el proyecto en modo editable registrando los comandos ejecutables `mw-sync` y `mediawiki-sync`:
 ```bash
 poetry install
@@ -122,27 +131,29 @@ source .venv/bin/activate
 mw-sync --help
 ```
 
-#### Opción 2: Instalación vía Wheel (.whl)
+#### Opción 3: Instalación vía Wheel local (.whl)
 Genera el paquete estándar y lo instala en cualquier entorno Python:
 ```bash
 # Construir paquete distribuible (en dist/):
 poetry build
 
-# Instalar el wheel:
-pip install dist/mediawiki_sync-3.1.0-py3-none-any.whl
+# Instalar el wheel generado:
+pip install dist/mediawiki_sync-1.0.0-py3-none-any.whl
 
 # Comandos de terminal disponibles globalmente en el entorno:
 mw-sync --help
 mediawiki-sync --help
 ```
 
-#### Opción 3: Instalación con soporte opcional de alto rendimiento HTTP
+#### Opción 4: Instalación con soporte opcional de alto rendimiento HTTP
 Si se desea aceleración de red mediante pool de conexiones `requests` / `urllib3`:
 ```bash
+pip install "mediawiki-sync[fast-http]"
+# o en local:
 pip install ".[fast-http]"
 ```
 
-#### Opción 4: Ejecución directa como módulo
+#### Opción 5: Ejecución directa como módulo
 Si se ejecuta directamente desde el clon del repositorio sin haber instalado el paquete en el entorno:
 ```bash
 python3 -m mw_sync --help

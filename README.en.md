@@ -145,7 +145,7 @@ Builds the standard distributable package and installs it:
 poetry build
 
 # Install the generated wheel:
-pip install dist/mediawiki_sync-1.2.0-py3-none-any.whl
+pip install dist/mediawiki_sync-1.2.1-py3-none-any.whl
 
 # Terminal commands available globally:
 mw-sync --help

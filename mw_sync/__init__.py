@@ -22,7 +22,7 @@ from mw_sync.converters.sanitizer import sanear_directorio, limpiar_contenido_ma
 from mw_sync.empty_pages import gestionar_paginas_vacias, listar_y_gestionar_paginas_vacias
 from mw_sync.i18n import t, _, set_language, get_language, init_language
 
-__version__ = "1.2.0"
+__version__ = "1.2.1"
 
 __all__ = [
     "MediaWikiClient",

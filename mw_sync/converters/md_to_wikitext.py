@@ -70,20 +70,31 @@ def markdown_a_wikitext(texto_md: str, mapa_titulos: dict = None, dir_docs: str 
     # 1. Extraer frontmatter
     _, md = extraer_metadatos_frontmatter(texto_md)
 
-    # 2. Proteger bloques de código (```lang ... ```)
+    # 2. Proteger bloques de código (```lang ... ```) y etiquetas nativas (<mermaid>, <syntaxhighlight>)
     bloques_codigo = []
+
+    # Proteger etiquetas nativas existentes en el Markdown antes de procesar otros elementos
+    def guardar_bloque_tag(match):
+        idx = len(bloques_codigo)
+        bloques_codigo.append(match.group(0))
+        return f'\x01CB{idx}\x01'
+
+    md = re.sub(r'<(?:mermaid|syntaxhighlight)[^>]*>.*?</(?:mermaid|syntaxhighlight)>', guardar_bloque_tag, md, flags=re.DOTALL | re.IGNORECASE)
+
     def guardar_bloque_codigo(match):
         lang = match.group(1).strip() if match.group(1) else ''
         codigo = match.group(2)
         idx = len(bloques_codigo)
-        if lang:
-            tag = f'<syntaxhighlight lang="{lang}">\n{codigo}\n</syntaxhighlight>'
+        if lang.lower() == 'mermaid':
+            tag = f'<mermaid>\n{codigo.strip()}\n</mermaid>'
+        elif lang:
+            tag = f'<syntaxhighlight lang="{lang}">\n{codigo.strip()}\n</syntaxhighlight>'
         else:
-            tag = f'<pre>\n{codigo}\n</pre>'
+            tag = f'<pre>\n{codigo.strip()}\n</pre>'
         bloques_codigo.append(tag)
         return f'\x01CB{idx}\x01'
 
-    md = re.sub(r'```(\w*)\n?(.*?)```', guardar_bloque_codigo, md, flags=re.DOTALL)
+    md = re.sub(r'```([^\n`]*)\n?(.*?)```', guardar_bloque_codigo, md, flags=re.DOTALL)
 
     # 3. Proteger código en línea (`codigo`)
     codigos_inline = []

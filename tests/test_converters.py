@@ -48,6 +48,26 @@ class TestHTMLToMarkdown(unittest.TestCase):
         md, _ = html_a_markdown(html, "Prueba")
         self.assertIn("- Nivel 1\n  - Nivel 2", md)
 
+    def test_mermaid_div_a_markdown(self):
+        html = '<div class="mermaid">graph TD\n    A --&gt; B</div>'
+        md, _ = html_a_markdown(html, "Prueba")
+        self.assertIn("```mermaid", md)
+        self.assertIn("graph TD", md)
+        self.assertIn("A --> B", md)
+
+    def test_mermaid_highlight_a_markdown(self):
+        html = '<div class="mw-highlight mw-highlight-lang-mermaid"><pre>graph TD\n    A --&gt; B</pre></div>'
+        md, _ = html_a_markdown(html, "Prueba")
+        self.assertIn("```mermaid", md)
+        self.assertIn("graph TD", md)
+        self.assertIn("A --> B", md)
+
+    def test_syntaxhighlight_python_a_markdown(self):
+        html = '<div class="mw-highlight mw-highlight-lang-python"><pre>def foo():\n    return 42</pre></div>'
+        md, _ = html_a_markdown(html, "Prueba")
+        self.assertIn("```python", md)
+        self.assertIn("def foo():", md)
+
 
 class TestMarkdownToWikitext(unittest.TestCase):
     def test_encabezados_limpios(self):
@@ -116,6 +136,21 @@ class TestMarkdownToWikitext(unittest.TestCase):
         self.assertEqual(lineas[2], "")
         self.assertEqual(lineas[3], "* Viñeta nueva")
 
+    def test_mermaid_a_wikitext(self):
+        md = "```mermaid\ngraph TD\n    Portal --> M1\n```"
+        wt = markdown_a_wikitext(md)
+        self.assertIn("<mermaid>\ngraph TD\n    Portal --> M1\n</mermaid>", wt)
+        self.assertNotIn("<syntaxhighlight", wt)
+
+    def test_syntaxhighlight_codigo_general(self):
+        md = "```python\nprint('hola')\n```"
+        wt = markdown_a_wikitext(md)
+        self.assertIn('<syntaxhighlight lang="python">\nprint(\'hola\')\n</syntaxhighlight>', wt)
+
+    def test_mermaid_tag_nativo_preservado(self):
+        md = "<mermaid>\ngraph TD\n    A --> B\n</mermaid>"
+        wt = markdown_a_wikitext(md)
+        self.assertEqual(wt, "<mermaid>\ngraph TD\n    A --> B\n</mermaid>")
 
 
 class TestSanitizer(unittest.TestCase):

@@ -138,6 +138,12 @@ class StandaloneHTMLToMarkdown(HTMLParser):
         self.heading_level = 1
         self.heading_buffer = []
 
+        # Control de bloques de código y diagramas Mermaid
+        self.in_mermaid = False
+        self.mermaid_depth = 0
+        self.mermaid_buffer = []
+        self.active_code_lang = None
+
     def _generar_etiqueta_fallback(self, href: str) -> str:
         """Genera un texto descriptivo accesible cuando un enlace no tiene texto interno."""
         if not href:
@@ -177,6 +183,13 @@ class StandaloneHTMLToMarkdown(HTMLParser):
         classes = set(attrs_dict.get('class', '').split())
         tag_id = attrs_dict.get('id', '')
 
+        # Si ya estamos en un bloque mermaid, capturar todo su contenido
+        if self.in_mermaid:
+            self.mermaid_depth += 1
+            if tag == 'br':
+                self.mermaid_buffer.append('<br/>')
+            return
+
         # Si ya estamos en una zona de exclusión, aumentar profundidad
         if self.skip_depth > 0:
             self.skip_depth += 1
@@ -191,6 +204,27 @@ class StandaloneHTMLToMarkdown(HTMLParser):
         if debe_omitir:
             self.skip_depth = 1
             return
+
+        # Detección de bloque Mermaid
+        es_mermaid = (
+            tag == 'mermaid'
+            or 'mermaid' in classes
+            or 'ext-mermaid' in classes
+            or 'mw-highlight-lang-mermaid' in classes
+            or (tag == 'syntaxhighlight' and attrs_dict.get('lang', '').strip().lower() == 'mermaid')
+        )
+        if es_mermaid:
+            self.in_mermaid = True
+            self.mermaid_depth = 1
+            self.mermaid_buffer = []
+            return
+
+        # Detección de lenguaje de código en bloques mw-highlight o syntaxhighlight
+        cls_lang = next((cls[18:] for cls in classes if cls.startswith('mw-highlight-lang-')), None)
+        if cls_lang:
+            self.active_code_lang = cls_lang
+        elif tag == 'syntaxhighlight' and attrs_dict.get('lang'):
+            self.active_code_lang = attrs_dict.get('lang').strip()
 
         # Listas y niveles de anidación
         if tag in ('ul', 'ol'):
@@ -220,7 +254,9 @@ class StandaloneHTMLToMarkdown(HTMLParser):
         elif tag == 'code':
             self.output.append('`')
         elif tag == 'pre':
-            self.output.append('\n```\n')
+            lang_str = self.active_code_lang or ''
+            self.output.append(f'\n```{lang_str}\n')
+            self.active_code_lang = None
         elif tag == 'li':
             indent = '  ' * max(0, self.list_depth - 1)
             marker = '- ' if (not self.list_types or self.list_types[-1] == 'ul') else '1. '
@@ -265,6 +301,16 @@ class StandaloneHTMLToMarkdown(HTMLParser):
             self.cell_buffer = []
 
     def handle_endtag(self, tag):
+        # Manejo de bloques Mermaid
+        if self.in_mermaid:
+            self.mermaid_depth -= 1
+            if self.mermaid_depth <= 0:
+                self.in_mermaid = False
+                codigo = ''.join(self.mermaid_buffer).strip()
+                self.output.append(f"\n\n```mermaid\n{codigo}\n```\n\n")
+                self.mermaid_buffer = []
+            return
+
         # Manejo estricto de decremento en zona de exclusión
         if self.skip_depth > 0:
             self.skip_depth -= 1
@@ -304,6 +350,9 @@ class StandaloneHTMLToMarkdown(HTMLParser):
             self.output.append('`')
         elif tag == 'pre':
             self.output.append('\n```\n')
+        elif tag == 'div':
+            if self.active_code_lang:
+                self.active_code_lang = None
         elif tag == 'a' and self.link_stack:
             info = self.link_stack.pop()
             if info['is_image_wrapper']:
@@ -344,6 +393,10 @@ class StandaloneHTMLToMarkdown(HTMLParser):
 
     def handle_data(self, data):
         if self.skip_depth > 0:
+            return
+
+        if self.in_mermaid:
+            self.mermaid_buffer.append(data)
             return
 
         if self.in_heading:

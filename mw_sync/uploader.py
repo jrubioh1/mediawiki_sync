@@ -51,7 +51,8 @@ def mostrar_diff_local(ruta_md: str, wikitext_generado: str):
 
 def ejecutar_subida(cliente: MediaWikiClient, output_dir: str, archivo_especifico: str = None,
                     forzar: bool = False, dry_run: bool = False, mostrar_diff: bool = False,
-                    resumen_edicion: str = None, auto_confirmar_conflicto: bool = False):
+                    resumen_edicion: str = None, auto_confirmar_conflicto: bool = False,
+                    no_imagenes: bool = False):
     """
     Detecta cambios locales y los publica de forma segura en la MediaWiki.
     Permite resolución interactiva de conflictos con confirmación por consola.
@@ -83,7 +84,7 @@ def ejecutar_subida(cliente: MediaWikiClient, output_dir: str, archivo_especific
 
         if ruta_abs.endswith(".md"):
             archivos_a_subir.append(ruta_abs)
-        else:
+        elif not no_imagenes:
             imagenes_a_subir.append(ruta_abs)
     else:
         if not os.path.exists(output_dir):
@@ -99,15 +100,16 @@ def ejecutar_subida(cliente: MediaWikiClient, output_dir: str, archivo_especific
                 if forzar or not hash_registrado or hash_registrado != hash_actual:
                     archivos_a_subir.append(ruta_f)
 
-        images_dir = os.path.join(output_dir, "images")
-        if os.path.exists(images_dir):
-            for img in os.listdir(images_dir):
-                ruta_img = os.path.join(images_dir, img)
-                if os.path.isfile(ruta_img):
-                    hash_img = calcular_sha256(ruta_img)
-                    hash_reg_img = estado.obtener_hash(img)
-                    if forzar or not hash_reg_img or hash_reg_img != hash_img:
-                        imagenes_a_subir.append(ruta_img)
+        if not no_imagenes:
+            images_dir = os.path.join(output_dir, "images")
+            if os.path.exists(images_dir):
+                for img in os.listdir(images_dir):
+                    ruta_img = os.path.join(images_dir, img)
+                    if os.path.isfile(ruta_img):
+                        hash_img = calcular_sha256(ruta_img)
+                        hash_reg_img = estado.obtener_hash(img)
+                        if forzar or not hash_reg_img or hash_reg_img != hash_img:
+                            imagenes_a_subir.append(ruta_img)
 
     total_cambios = len(archivos_a_subir) + len(imagenes_a_subir)
     if total_cambios == 0:
@@ -132,7 +134,10 @@ def ejecutar_subida(cliente: MediaWikiClient, output_dir: str, archivo_especific
             res = cliente.subir_archivo(nom_img, ruta_img, comentario=resumen)
             if res.get("exito"):
                 estado.registrar_imagen(nom_img, calcular_sha256(ruta_img))
-                print(" [OK]")
+                if res.get("nochange"):
+                    print(_("up_image_up_to_date"))
+                else:
+                    print(_("up_image_ok"))
             else:
                 print(f" [ERROR] {res.get('error')}")
 

@@ -76,6 +76,20 @@ class TestUploaderConflict(unittest.TestCase):
         self.assertEqual(DEFAULT_CONFIG["MEDIAWIKI_URL"], "https://target-wiki.example.com/api.php")
         self.assertEqual(DEFAULT_CONFIG["WIKI_USER"], "target_user")
 
+    def test_subida_imagen_duplicada_al_dia(self):
+        img_dir = os.path.join(self.test_dir, "images")
+        os.makedirs(img_dir, exist_ok=True)
+        img_file = os.path.join(img_dir, "foto.png")
+        with open(img_file, "wb") as f:
+            f.write(b"PNG_DATA")
+
+        mock_client = MagicMock()
+        mock_client.api_url = "https://example.com/api.php"
+        mock_client.subir_archivo.return_value = {"exito": True, "nochange": True, "info": "Duplicate"}
+
+        ejecutar_subida(mock_client, self.test_dir, archivo_especifico=img_file, forzar=True, no_imagenes=False)
+        mock_client.subir_archivo.assert_called_once()
+
 
 if __name__ == "__main__":
     unittest.main()

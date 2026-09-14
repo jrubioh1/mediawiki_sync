@@ -583,11 +583,21 @@ class MediaWikiClient:
                     res = json.loads(resp.read().decode("utf-8"))
 
             if "error" in res:
-                return {"exito": False, "error": res["error"].get("info", str(res["error"]))}
+                err_data = res["error"]
+                codigo = err_data.get("code", "") if isinstance(err_data, dict) else ""
+                info = err_data.get("info", str(err_data)) if isinstance(err_data, dict) else str(err_data)
+                if codigo == "fileexists-no-change":
+                    return {"exito": True, "nochange": True, "info": info, "code": codigo}
+                return {"exito": False, "error": info, "code": codigo}
 
             upload_info = res.get("upload", {})
             if upload_info.get("result") == "Success":
                 return {"exito": True, "info": upload_info}
+            if upload_info.get("result") == "Warning":
+                warnings = upload_info.get("warnings", {})
+                if "fileexists-no-change" in warnings:
+                    return {"exito": True, "nochange": True, "info": "Duplicado exacto ya existente"}
+                return {"exito": False, "error": f"Advertencia de subida: {warnings}"}
 
             return {"exito": False, "error": str(res)}
         except Exception as e:

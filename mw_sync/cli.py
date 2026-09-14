@@ -228,7 +228,8 @@ def main(argv=None):
             dry_run=args.dry_run,
             mostrar_diff=args.diff,
             resumen_edicion=args.summary,
-            auto_confirmar_conflicto=args.yes
+            auto_confirmar_conflicto=args.yes,
+            no_imagenes=args.no_images
         )
     else:
         ejecutar_descarga(
